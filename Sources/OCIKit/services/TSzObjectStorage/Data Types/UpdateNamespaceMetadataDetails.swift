@@ -20,9 +20,9 @@ public struct UpdateNamespaceMetadataDetails: Codable {
   public let defaultS3CompartmentId: String?
   /// If the field is set, specifies the default compartment assignment for the Swift API.
   public let defaultSwiftCompartmentId: String?
-    
-    public init(defaultS3CompartmentId: String? = nil, defaultSwiftCompartmentId: String? = nil) {
-        self.defaultS3CompartmentId = defaultS3CompartmentId
-        self.defaultSwiftCompartmentId = defaultSwiftCompartmentId
-    }
+
+  public init(defaultS3CompartmentId: String? = nil, defaultSwiftCompartmentId: String? = nil) {
+    self.defaultS3CompartmentId = defaultS3CompartmentId
+    self.defaultSwiftCompartmentId = defaultSwiftCompartmentId
+  }
 }
