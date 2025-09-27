@@ -1,11 +1,13 @@
 # oci-swift-sdk
-Unofficial and unsupported Oracle Cloud Infrastructure SDK for Swift
+oci-swift-sdk is a Swift SDK for interacting with Oracle Cloud Infrastructure (OCI), designed to work seamlessly across Linux, macOS, and iOS platforms. It enables developers to build robust, cloud-native applications in Swift by providing comprehensive access to OCI services.
+
+The project is community-supported and maintained by contributors who are passionate about Swift and cloud development. It is not affiliated with Oracle or Oracle Cloud Infrastructure, and it does not receive official support from Oracle.
 
 ## Why
 I love Swift, I use OCI because it's good, and I'd like to use OCI services for my Swift projects. And because there is no OCI SDK for Swift as of today.  
 
 ## Approach
-I'm going to add support for the services that I need at the moment. If you would like to add support for a service you need, please go ahead, and please submit a PR so that others can find your implementation here as well.
+Support for OCI services is being added incrementally, starting with those currently required. Contributions to expand service coverage are welcome. If a specific service is needed, feel free to implement it and submit a pull request so others can benefit from the addition as well.
 
 ## TODO List
 - [x] API Key authN
