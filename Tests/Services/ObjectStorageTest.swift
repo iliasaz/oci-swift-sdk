@@ -43,7 +43,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let object = CopyObjectDetails(
-      destinationBucket: "test_bucket_by_sdk_2",
+      destinationBucket: "Bucket_Parks_of_Prague",
       destinationNamespace: "frjfldcyl3la",
       destinationObjectName: "Frame.png",
       destinationRegion: "eu-frankfurt-1",
@@ -71,24 +71,24 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let bucket = CreateBucketDetails(
+
+    let bucketDetails = CreateBucketDetails(
       compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q",
       name: "test_bucket_by_sdk"
     )
 
-    let createBucket = try await sut.createBucket(
+    let bucket = try await sut.createBucket(
       namespaceName: "frjfldcyl3la",
-      createBucketDetails: bucket
+      createBucketDetails: bucketDetails
     )
 
     // Prints the name of the new bucket
-    if let createBucket {
-      print(createBucket.name)
-    }
+    print("Created bucket: \(bucket.name)")
 
-    #expect(createBucket != nil, "The return value should not be nil")
+    #expect(bucket.name == "test_bucket_by_sdk", "Bucket name should match the requested one")
   }
 
+  // MARK: - Creates archieve bucket
   @Test func createsArchiveBucketWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -100,23 +100,21 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let bucket = CreateBucketDetails(
+    let bucketDetails = CreateBucketDetails(
       compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q",
       name: "archive_test_bucket_by_sdk",
       storageTier: StorageTier.archive
     )
 
-    let createBucket = try await sut.createBucket(
+    let bucket = try await sut.createBucket(
       namespaceName: "frjfldcyl3la",
-      createBucketDetails: bucket
+      createBucketDetails: bucketDetails
     )
 
     // Prints the name of the new bucket
-    if let createBucket {
-      print(createBucket.name)
-    }
+    print("Created bucket: \(bucket.name)")
 
-    #expect(createBucket != nil, "The return value should not be nil")
+    #expect(bucket.name == "archive_test_bucket_by_sdk", "Bucket name should match the requested one")
   }
 
   // MARK: - Creates replication policy
@@ -134,7 +132,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let replicationPolicy = CreateReplicationPolicyDetails(
+    let policyDetails = CreateReplicationPolicyDetails(
       destinationBucketName: "test_bucket_by_sdk_replica",
       destinationRegionName: "eu-frankfurt-1",
       name: "Test_policy"
@@ -143,10 +141,45 @@ struct ObjectStorageTest {
     let createReplicationPolicy = try await sut.createReplicationPolicy(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
-      policyDetails: replicationPolicy
+      policyDetails: policyDetails
     )
 
-    #expect(createReplicationPolicy != nil, "The operation should succeed")
+    #expect(createReplicationPolicy.name == "Test_policy", "Policy name should match the requested one")
+  }
+
+  // MARK: - Creates retention rule
+  /// If the bucket versioning is enabled, you cannot add retention policy.
+  /// `timeRuleLocked` must be at least 14 days ahead of the current time.`
+  @Test func createsRetentionRuleWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let twentyTwoDaysFromNow = Calendar.current.date(byAdding: .day, value: 22, to: Date.now)
+    let ruleDetails = CreateRetentionRuleDetails(
+      displayName: "Test_retention_by_SDK",
+      duration: Duration(timeAmount: 10, timeUnit: TimeUnit.days),
+      timeRuleLocked: twentyTwoDaysFromNow
+    )
+
+    let createRetentionRule = try? await sut.createRetentionRule(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk",
+      ruleDetails: ruleDetails
+    )
+
+    // Prints rule
+    if let rule = createRetentionRule {
+      print("You applied rule: \(rule.displayName).")
+    }
+    #expect(createRetentionRule != nil, "The operation should succeed")
   }
 
   // MARK: - Creates preauthenticated request
@@ -169,15 +202,11 @@ struct ObjectStorageTest {
       timeExpires: "2025-12-31T23:59:59Z"
     )
 
-    let createPreauthenticatedRequest = try await sut.createPreauthenticatedRequest(
+    let createPreauthenticatedRequest = try? await sut.createPreauthenticatedRequest(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
       requestDetails: requestDetails
     )
-
-    if let createPreauthenticatedRequest {
-      print("The object can be accessed on: \(createPreauthenticatedRequest.fullPath)")
-    }
 
     #expect(createPreauthenticatedRequest != nil, "The operation should succeed")
   }
@@ -269,6 +298,28 @@ struct ObjectStorageTest {
     #expect(deleteReplicationPolicy != nil, "The operation should succeed")
   }
 
+  // MARK: - Deletes retention rule
+  @Test func deletesRetentionRuleWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let deleteRetentionRule: Void? = try? await sut.deleteRetentionRule(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk",
+      retentionRuleId: "5e29a9ef-d900-4b4d-a76d-b81f5ddf8c55"
+    )
+
+    #expect(deleteRetentionRule != nil, "The operation should succeed")
+  }
+
   // MARK: - Deletes preauthenticated request
   @Test func deletesPreauthenticatedRequestWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
@@ -285,7 +336,7 @@ struct ObjectStorageTest {
     let deletePreauthRequest: Void? = try await sut.deletePreauthenticatedRequest(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
-      parId: "v5PRaVnfT4yE6LFk2SUoXe/ilqJX/Qv/gvglehsnR/wY66SiB9p+XuTfCKFPC1jw:Frame.png"
+      parId: "12345678-aaaa-bbbb-cccc-1234567890ab"  // <-- replace with valid PAR ID
     )
 
     #expect(deletePreauthRequest != nil, "The operation should succeed")
@@ -304,7 +355,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let createBucket = try await sut.getBucket(
+    let createBucket = try? await sut.getBucket(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk"
     )
@@ -408,7 +459,7 @@ struct ObjectStorageTest {
 
     #expect(getObject != nil, "The operation should succeed")
   }
-  
+
   @Test func getsObjectWithPAR() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -420,8 +471,11 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    
-    let getObject = try? await sut.getObject(parURL: URL(string: "https://objectstorage.us-ashburn-1.oraclecloud.com/p/ugf-ZiRD-jayajvUvmJ1Uzva5ICb36kRaok7SNA1iOZU00Z1ujTPa6StuGfKSAcj/n/idhwcifwd5xy/b/myTestBucket/o/")!, objectName: "dir1/test_file.txt")
+
+    let getObject = try? await sut.getObject(
+      parURL: URL(string: "https://objectstorage.us-ashburn-1.oraclecloud.com/p/ugf-ZiRD-jayajvUvmJ1Uzva5ICb36kRaok7SNA1iOZU00Z1ujTPa6StuGfKSAcj/n/idhwcifwd5xy/b/myTestBucket/o/")!,
+      objectName: "dir1/test_file.txt"
+    )
     print("downloaded object size: \(getObject?.count ?? -1)")
     #expect(getObject != nil, "The operation should succeed")
   }
@@ -465,17 +519,41 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let getPreauthenticatedRequest = try await sut.getPreauthenticatedRequest(
+    let getPreauthenticatedRequest = try? await sut.getPreauthenticatedRequest(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
       parId: "cX+WG6JFkx9HKjV7ryUv68lqBKVJGquhJHTXLGhy8MzrlcseRyil9dj2dadcTQDh:Frame.png"
     )
 
-    // Print preauthenticated request
-    if let request = getPreauthenticatedRequest {
-      print("Request name: \(request.name), expires on: \(request.timeExpires)")
-    }
     #expect(getPreauthenticatedRequest != nil, "The operation should succeed")
+  }
+
+  // MARK: - Gets retention rule
+  @Test func getRetentionRuleWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let getRetentionRule: RetentionRule? = try? await sut.getRetentionRule(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk",
+      retentionRuleId: "35c5bf43-def0-458b-a6a2-296be65d456c"
+    )
+
+    // Prints retention rule
+      if let rule = getRetentionRule {
+          if let timeCreated = rule.timeCreated {
+              print("id: \(rule.id) - name: \(rule.displayName) on \(timeCreated)")
+          }
+      }
+    #expect(getRetentionRule != nil, "The operation should succeed")
   }
 
   // MARK: - Heads bucket
@@ -541,7 +619,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listReplicationPolicies = try await sut.listReplicationPolicies(
+    let listReplicationPolicies = try? await sut.listReplicationPolicies(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
       limit: 10
@@ -570,7 +648,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listReplicationResources = try await sut.listReplicationPolicies(
+    let listReplicationResources = try? await sut.listReplicationPolicies(
       namespaceName: "frjfldcyl3la",
       bucketName: "test_bucket_by_sdk",
       limit: 10
@@ -583,6 +661,36 @@ struct ObjectStorageTest {
       }
     }
     #expect(listReplicationResources != nil, "The operation should succeed")
+  }
+
+  // MARK: - List retention rules
+  @Test func listRetentionRulesWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let listRetentionRules = try? await sut.listRetentionRules(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk"
+    )
+
+    // Prints rules
+    if let rules = listRetentionRules {
+
+        for rule in rules.items {
+            if let timeCreated = rule.timeCreated{
+                print("- id: \(rule.id) name: \(rule.displayName) on \(timeCreated)")
+            }
+        }
+    }
+    #expect(listRetentionRules != nil, "The operation should succeed")
   }
 
   // MARK: - List objects
@@ -599,18 +707,13 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listOfObjects = try await sut.listObjects(
-      namespaceName: "frcjtpiacekz",
-      bucketName: "szabolcs_toth_demo_bucket",
+    let listOfObjects = try? await sut.listObjects(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk"
     )
 
-    // Print objects
-    if let objectsInBucket = listOfObjects {
-      for object in objectsInBucket.objects {
-        if let size = object.size, let timeCreated = object.timeCreated {
-          print("Name: \(object.name), size: \(size), created on: \(timeCreated)")
-        }
-      }
+    if let name = listOfObjects?.objects.first?.name, let size = listOfObjects?.objects.first?.size {
+      print("The name of the file: \(name), size: \(size).")
     }
     #expect(listOfObjects != nil, "The operation should succeed")
   }
@@ -628,9 +731,9 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listOfObjects = try await sut.listObjects(
-      namespaceName: "frcjtpiacekz",
-      bucketName: "szabolcs_toth_demo_bucket",
+    let listOfObjects = try? await sut.listObjects(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk",
       fields: Field.allCases
     )
 
@@ -644,7 +747,7 @@ struct ObjectStorageTest {
     }
     #expect(listOfObjects != nil, "The operation should succeed")
   }
-  
+
   // Returning with `name`, `size`, `timeCreated` and `timeModified` using PAR
   @Test func listObjectsWithPAR() async throws {
     let regionId = try extractUserRegion(
@@ -657,12 +760,12 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    
-    let listOfObjects = try await sut.listObjects(
+
+    let listOfObjects = try? await sut.listObjects(
       parURL: URL(string: "https://objectstorage.us-ashburn-1.oraclecloud.com/p/ugf-ZiRD-jayajvUvmJ1Uzva5ICb36kRaok7SNA1iOZU00Z1ujTPa6StuGfKSAcj/n/idhwcifwd5xy/b/myTestBucket/o/")!,
       limit: 10
     )
-    
+
     // Print objects
     if let objectsInBucket = listOfObjects {
       for object in objectsInBucket.objects {
@@ -736,19 +839,9 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listOfPreauthenticatedRequests = try? await sut.listPreauthenticatedRequests(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
-    )
+    let makeBucketWritable: ()? = try? await sut.makeBucketWritable(namespaceName: "frjfldcyl3la", bucketName: "test_bucket_by_sdk_replica")
 
-    // Print preauthenticated requests
-    if let requests = listOfPreauthenticatedRequests {
-      print("Number of requests found: \(requests.count)")
-      for request in requests {
-        print("Request name: \(request.name), expires on: \(request.timeExpires)")
-      }
-    }
-    #expect(listOfPreauthenticatedRequests != nil, "The operation should succeed")
+    #expect(makeBucketWritable != nil, "The operation should succeed")
   }
 
   // MARK: - Puts object
@@ -990,4 +1083,30 @@ struct ObjectStorageTest {
 
     #expect(updateObjectStorageTier != nil, "The operation should succeed")
   }
+    
+    // MARK: - Updates retention rule
+    @Test func updatesRetentionRuleWithAPIKeySigner() async throws {
+        let regionId = try extractUserRegion(
+          from: ociConfigFilePath,
+          profile: ociProfileName
+        )
+        let region = Region.from(regionId: regionId ?? "") ?? .iad
+        let signer = try APIKeySigner(
+          configFilePath: ociConfigFilePath,
+          configName: ociProfileName
+        )
+        let sut = try ObjectStorageClient(region: region, signer: signer)
+        let fortyTwoDaysFromNow = Calendar.current.date(byAdding: .day, value: 42, to: Date.now)
+        let updateRetentionRuleDetails = UpdateRetentionRuleDetails(displayName: "Test_retention_by_SDK_modified", duration: Duration(timeAmount: 20, timeUnit: TimeUnit.days), timeRuleLocked: fortyTwoDaysFromNow)
+        
+        let updateRetentionRule =  try? await sut.updateRetentionRule(namespaceName: "frjfldcyl3la", bucketName: "test_bucket_by_sdk", retentionRuleId:"7da01af4-236e-45eb-b37e-91ba51e2e87b", updateRetentionRuleDetails: updateRetentionRuleDetails)
+        
+        // Prints updated retention rule
+        if let rule = updateRetentionRule {
+            if let timeRuleLocked = rule.timeRuleLocked {
+                print("New rule applies lock on \(timeRuleLocked)")
+            }
+        }
+        #expect(updateRetentionRule != nil, "The operation should succeed")
+    }
 }

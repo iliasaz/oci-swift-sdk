@@ -43,6 +43,8 @@ public enum ObjectStorageAPI: API {
   case createBucket(namespaceName: String, opcClientRequestId: String? = nil)
   /// Creates replication policy
   case createReplicationPolicy(namespaceName: String, bucketName: String, opcClientRequestId: String? = nil)
+  /// Creates retention rule
+  case createRetentionRule(namespaceName: String, bucketName: String, opcClientRequestId: String? = nil)
   /// Creates preauthenticated request
   case createPreauthenticatedRequest(namespaceName: String, bucketName: String, opcClientRequestId: String? = nil)
   /// Deletes bucket
@@ -51,6 +53,8 @@ public enum ObjectStorageAPI: API {
   case deleteObject(namespaceName: String, bucketName: String, objectName: String, opcClientRequestId: String? = nil, versionId: String? = nil)
   /// Deletes replication policy
   case deleteReplicationPolicy(namespaceName: String, bucketName: String, replicationId: String, opcClientRequestId: String? = nil)
+  /// Deletes retention rule
+  case deleteRetentionRule(namespaceName: String, bucketName: String, retentionId: String, opcClientRequestId: String? = nil)
   /// Deletes preauthenticated request
   case deletePreauthenticatedRequest(namespaceName: String, bucketName: String, parId: String, opcClientRequestId: String? = nil)
   /// Gets bucket
@@ -73,6 +77,8 @@ public enum ObjectStorageAPI: API {
     httpResponseContentEncoding: String? = nil,
     httpResponseExpires: String? = nil
   )
+  /// Gets replication policy
+  case getReplicationPolicy(namespaceName: String, bucketName: String, replicationId: String, opcClientRequestId: String? = nil)
   /// Gets object using PAR
   case getObjectWithPAR(
     parURL: URL,
@@ -90,8 +96,6 @@ public enum ObjectStorageAPI: API {
     httpResponseContentEncoding: String? = nil,
     httpResponseExpires: String? = nil
   )
-  /// Gets replication policy
-  case getReplicationPolicy(namespaceName: String, bucketName: String, replicationId: String, opcClientRequestId: String? = nil)
   /// Gets preauthenticated request
   case getPreauthenticatedRequest(namespaceName: String, bucketName: String, parId: String, opcClientRequestId: String? = nil)
   /// HEAD bucket
@@ -111,6 +115,8 @@ public enum ObjectStorageAPI: API {
   case getNamespace(compartmentId: String? = nil, opcClientRequestId: String? = nil)
   /// Gets namespace metadata
   case getNamespaceMetadata(namespaceName: String, opcClientRequestId: String? = nil)
+  /// Gets retention rule
+  case getRetentionRule(namespaceName: String, bucketName: String, retentionId: String, opcClientRequestId: String? = nil)
   /// Lists buckets
   case listBuckets(namespaceName: String, compartmentId: String, opcClientRequestId: String? = nil)
   /// Lists objects
@@ -156,6 +162,8 @@ public enum ObjectStorageAPI: API {
   case listReplicationPolicies(namespaceName: String, bucketName: String, page: String? = nil, limit: Int? = 100, opcClientRequestId: String? = nil)
   /// Lists replication sources
   case listReplicationSources(namespaceName: String, bucketName: String, page: String? = nil, limit: Int? = 100, opcClientRequestId: String? = nil)
+  /// Lists retention rules
+  case listRetentionRules(namespaceName: String, bucketName: String, page: String? = nil, opcClientRequestId: String? = nil)
   /// Makes bucket writable
   case makeBucketWritable(namespaceName: String, bucketName: String, opcClientRequestId: String? = nil)
   /// List preauthenticated requests
@@ -189,6 +197,8 @@ public enum ObjectStorageAPI: API {
   case updateNamespaceMetadata(namespaceName: String, opcClientRequestId: String? = nil)
   /// Updates object storage tier
   case updadateObjectStorageTier(namespaceName: String, bucketName: String, opcClientRequestId: String? = nil)
+  /// Updates retention rule
+  case updateRetentionRule(namespaceName: String, bucketName: String, retentionId: String, opcClientRequestId: String? = nil)
 
   // Path
   public var path: String {
@@ -204,6 +214,9 @@ public enum ObjectStorageAPI: API {
     case .createReplicationPolicy(let namespaceName, let bucketName, _),
       .listReplicationPolicies(let namespaceName, let bucketName, _, _, _):
       return "/n/\(namespaceName)/b/\(bucketName)/replicationPolicies"
+    case .createRetentionRule(let namespaceName, let bucketName, _),
+      .listRetentionRules(let namespaceName, let bucketName, _, _):
+      return "/n/\(namespaceName)/b/\(bucketName)/retentionRules"
     case .deleteReplicationPolicy(let namespaceName, let bucketName, let replicationPolicyId, _),
       .getReplicationPolicy(let namespaceName, let bucketName, let replicationPolicyId, _):
       return "/n/\(namespaceName)/b/\(bucketName)/replicationPolicies/\(replicationPolicyId)"
@@ -218,6 +231,10 @@ public enum ObjectStorageAPI: API {
     case .deletePreauthenticatedRequest(let namespaceName, let bucketName, let parId, _),
       .getPreauthenticatedRequest(let namespaceName, let bucketName, let parId, _):
       return "/n/\(namespaceName)/b/\(bucketName)/p/\(parId)"
+    case .deleteRetentionRule(let namespaceName, let bucketName, let retentionRuleId, _),
+      .getRetentionRule(let namespaceName, let bucketName, let retentionRuleId, _),
+      .updateRetentionRule(let namespaceName, let bucketName, let retentionRuleId, _):
+      return "/n/\(namespaceName)/b/\(bucketName)/retentionRules/\(retentionRuleId)"
     case .reencryptBucket(let namespaceName, let bucketName, _):
       return "/n/\(namespaceName)/b/\(bucketName)/actions/reencrypt"
     case .reencryptObject(let namespaceName, let bucketName, let objectName, _, _):
@@ -229,7 +246,7 @@ public enum ObjectStorageAPI: API {
     case .listObjects(let namespaceName, let bucketName, _, _, _, _, _, _, _, _):
       return "/n/\(namespaceName)/b/\(bucketName)/o"
     case .listObjectsWithPAR(let parURL, _, _, _, _, _, _, _, _):
-        return parURL.path()
+      return parURL.path()
     case .listObjectVersions(let namespaceName, let bucketName, _, _, _, _, _, _, _, _, _):
       return "/n/\(namespaceName)/b/\(bucketName)/objectversions"
     case .listReplicationSources(let namespaceName, let bucketName, _, _, _):
@@ -242,7 +259,7 @@ public enum ObjectStorageAPI: API {
       .putObject(let namespaceName, let bucketName, let objectName, _, _, _):
       return "/n/\(namespaceName)/b/\(bucketName)/o/\(objectName)"
     case .getObjectWithPAR(let parURL, let objectName, _, _, _, _, _, _, _, _, _, _, _, _):
-        return "\(parURL.path())\(objectName)"
+      return "\(parURL.path())\(objectName)"
     case .restoreObject(let namespaceName, let bucketName, _):
       return "/n/\(namespaceName)/b/\(bucketName)/actions/restoreObjects"
     case .updadateObjectStorageTier(let namespaceName, let bucketName, _):
@@ -256,8 +273,9 @@ public enum ObjectStorageAPI: API {
     case .copyObject,
       .createBucket,
       .createReplicationPolicy,
-      .makeBucketWritable,
+      .createRetentionRule,
       .createPreauthenticatedRequest,
+      .makeBucketWritable,
       .reencryptBucket,
       .reencryptObject,
       .renameObject,
@@ -268,6 +286,7 @@ public enum ObjectStorageAPI: API {
     case .deleteBucket,
       .deleteObject,
       .deleteReplicationPolicy,
+      .deleteRetentionRule,
       .deletePreauthenticatedRequest:
       return .delete
     case .getNamespace,
@@ -276,12 +295,14 @@ public enum ObjectStorageAPI: API {
       .getObjectWithPAR,
       .getNamespaceMetadata,
       .getReplicationPolicy,
+      .getRetentionRule,
       .listBuckets,
       .listObjects,
       .listObjectsWithPAR,
       .listObjectVersions,
       .listReplicationPolicies,
       .listReplicationSources,
+      .listRetentionRules,
       .getPreauthenticatedRequest,
       .listPreauthenticatedRequests:
       return .get
@@ -289,7 +310,8 @@ public enum ObjectStorageAPI: API {
       .headObject:
       return .head
     case .putObject,
-      .updateNamespaceMetadata:
+      .updateNamespaceMetadata,
+      .updateRetentionRule:
       return .put
     }
   }
@@ -300,11 +322,14 @@ public enum ObjectStorageAPI: API {
     case .copyObject,
       .createBucket,
       .createReplicationPolicy,
+      .createRetentionRule,
       .deleteBucket,
       .deleteReplicationPolicy,
+      .deleteRetentionRule,
       .getBucket,
       .getNamespaceMetadata,
       .getReplicationPolicy,
+      .getRetentionRule,
       .createPreauthenticatedRequest,
       .deletePreauthenticatedRequest,
       .getPreauthenticatedRequest,
@@ -316,7 +341,8 @@ public enum ObjectStorageAPI: API {
       .restoreObject,
       .updateBucket,
       .updateNamespaceMetadata,
-      .updadateObjectStorageTier:
+      .updadateObjectStorageTier,
+      .updateRetentionRule:
       return nil
     case .getNamespace(let compartmentId, _):
       if let compartmentId {
@@ -355,22 +381,22 @@ public enum ObjectStorageAPI: API {
       let httpResponseContentEncoding,
       let httpResponseExpires
     ),
-    .getObjectWithPAR(
-      _,
-      _,
-      let versionId,
-      _,
-      _,
-      _,
-      _,
-      _,
-      let httpResponseContentDisposition,
-      let httpResponseCacheControl,
-      let httpResponseContentType,
-      let httpResponseContentLanguage,
-      let httpResponseContentEncoding,
-      let httpResponseExpires
-    ):
+      .getObjectWithPAR(
+        _,
+        _,
+        let versionId,
+        _,
+        _,
+        _,
+        _,
+        _,
+        let httpResponseContentDisposition,
+        let httpResponseCacheControl,
+        let httpResponseContentType,
+        let httpResponseContentLanguage,
+        let httpResponseContentEncoding,
+        let httpResponseExpires
+      ):
       let keyValuePairs: [(String, String?)] = [
         ("versionId", versionId),
         ("contentDisposition", httpResponseContentDisposition),
@@ -411,7 +437,7 @@ public enum ObjectStorageAPI: API {
       return queryItems.isEmpty ? nil : queryItems
 
     case .listObjects(_, _, let prefix, let start, let end, let limit, let delimiter, let fields, _, let startAfter),
-          .listObjectsWithPAR(_, let prefix, let start, let end, let limit, let delimiter, let fields, _, let startAfter):
+      .listObjectsWithPAR(_, let prefix, let start, let end, let limit, let delimiter, let fields, _, let startAfter):
       let keyValuePairs: [(String, String?)] = [
         ("prefix", prefix),
         ("start", start),
@@ -448,6 +474,14 @@ public enum ObjectStorageAPI: API {
 
       return queryItems.isEmpty ? nil : queryItems
 
+    case .listRetentionRules(_, _, let page, _):
+      if let page {
+        return [
+          URLQueryItem(name: "page", value: page)
+        ]
+      }
+      return nil
+
     case .listPreauthenticatedRequests(_, _, let objectNamePrefix, let limit, let page, _):
       let keyValuePairs: [(String, String?)] = [
         ("objectNamePrefix", objectNamePrefix),
@@ -470,10 +504,12 @@ public enum ObjectStorageAPI: API {
     case .copyObject(_, _, let opcClientRequestId),
       .createBucket(_, let opcClientRequestId),
       .createReplicationPolicy(_, _, let opcClientRequestId),
-      .createPreauthenticatedRequest(_, _, let opcClientRequestId),
+      .createRetentionRule(_, _, let opcClientRequestId),
       .deleteBucket(_, _, let opcClientRequestId),
       .deleteObject(_, _, _, let opcClientRequestId, _),
       .deleteReplicationPolicy(_, _, _, let opcClientRequestId),
+      .deleteRetentionRule(_, _, _, let opcClientRequestId),
+      .createPreauthenticatedRequest(_, _, let opcClientRequestId),
       .deletePreauthenticatedRequest(_, _, _, let opcClientRequestId),
       .getBucket(_, _, let opcClientRequestId),
       .getObject(_, _, _, _, let opcClientRequestId, _, _, _, _, _, _, _, _, _, _),
@@ -481,6 +517,7 @@ public enum ObjectStorageAPI: API {
       .getNamespace(_, let opcClientRequestId),
       .getNamespaceMetadata(_, let opcClientRequestId),
       .getReplicationPolicy(_, _, _, let opcClientRequestId),
+      .getRetentionRule(_, _, _, let opcClientRequestId),
       .getPreauthenticatedRequest(_, _, _, let opcClientRequestId),
       .headBucket(_, _, let opcClientRequestId),
       .headObject(_, _, _, _, let opcClientRequestId, _, _, _),
@@ -490,6 +527,7 @@ public enum ObjectStorageAPI: API {
       .listObjects(_, _, _, _, _, _, _, _, let opcClientRequestId, _),
       .listObjectsWithPAR(_, _, _, _, _, _, _, let opcClientRequestId, _),
       .listObjectVersions(_, _, _, _, _, _, _, _, let opcClientRequestId, _, _),
+      .listRetentionRules(_, _, _, let opcClientRequestId),
       .makeBucketWritable(_, _, let opcClientRequestId),
       .listPreauthenticatedRequests(_, _, _, _, _, let opcClientRequestId),
       .reencryptBucket(_, _, let opcClientRequestId),
@@ -498,7 +536,8 @@ public enum ObjectStorageAPI: API {
       .restoreObject(_, _, let opcClientRequestId),
       .updateBucket(_, _, let opcClientRequestId),
       .updateNamespaceMetadata(_, let opcClientRequestId),
-      .updadateObjectStorageTier(_, _, let opcClientRequestId):
+      .updadateObjectStorageTier(_, _, let opcClientRequestId),
+      .updateRetentionRule(_, _, _, let opcClientRequestId):
       if let opcClientRequestId {
         return ["opc-client-request-id": opcClientRequestId]
       }
