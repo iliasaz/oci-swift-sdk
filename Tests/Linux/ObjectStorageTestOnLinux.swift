@@ -31,8 +31,8 @@ struct ObjectStorageTestOnLinux {
   }
 
   // MARK: - Gets namespace
-  // Returns with a string. e.g.:"frjfldcyl3la"
-  @Test func getsNamespaceWithAPIKeySignerReturnsValidString() async throws {
+  @Test("GetNamespace returns with a string. e.g.:\"frjfldcyl3la\"")
+  func getsNamespaceWithAPIKeySignerReturnsValidString() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -51,39 +51,39 @@ struct ObjectStorageTestOnLinux {
     #expect(!namespace.isEmpty, "Namespace should not be empty")
   }
 
-@Test func putsObjectWithAPIKeySigner() async throws {
-  let regionId = try extractUserRegion(
-    from: ociConfigFilePath,
-    profile: ociProfileName
-  )
-  let region = Region.from(regionId: regionId ?? "") ?? .iad
-  let signer = try APIKeySigner(
-    configFilePath: ociConfigFilePath,
-    configName: ociProfileName
-  )
-  let sut = try ObjectStorageClient(region: region, signer: signer)
-  let fileToUploadPath = NSHomeDirectory() + "/Desktop/CleanShot 2025-11-03 at 16.23.55.png"
-  let fileToUploadURL = URL(fileURLWithPath: fileToUploadPath)
-  let data: Data = try Data(contentsOf: fileToUploadURL)
-
-  do {
-    try await sut.putObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      objectName: "\(fileToUploadURL.lastPathComponent)",
-      putObjectBody: data
+  // MARK: - Puts object
+  @Test("PutObject uploads a file with special characters in its name")
+  func putsObjectWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
     )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+    let dummyData = Data("Hello, OCI!".utf8)
 
-    #expect(true, "The operation should succeed")
+    do {
+      try await sut.putObject(
+        namespaceName: "frjfldcyl3la",
+        bucketName: "test_bucket_by_sdk",
+        objectName: "!@#$%^&*()_ 1.txt",
+        putObjectBody: dummyData
+      )
+
+      #expect(true, "The operation should succeed")
+    }
+    catch {
+      Issue.record("putObject threw an error: \(error)")
+    }
   }
-  catch {
-    Issue.record("putObject threw an error: \(error)")
-  }
-}
 
   // MARK: - Lists objects with Observable
-  // Returning with `name`, `size`, `timeCreated` and `timeModified`
-  @Test func listObjectsObservableWithAPIKeySigner() async throws {
+  @Test("ListObjects returns with `name`, `size`, `timeCreated` and `timeModified`")
+  func listObjectsObservableWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -107,78 +107,82 @@ struct ObjectStorageTestOnLinux {
     // Print objects
     for object in originalObjects.objects {
       if let timeCreated = object.timeCreated, let size = object.size {
-          print("ID: \(object.id ), Name: \(object.name), Size: \(size), Created: \(timeCreated)")
+        print("ID: \(object.id ), Name: \(object.name), Size: \(size), Created: \(timeCreated)")
       }
     }
     #expect(!originalObjects.objects.isEmpty, "Expected non-empty object list after API execution")
   }
-    
-    // MARK: - Lists work requests
-    @Test func listWorkRequestsWithAPIKeySigner() async throws {
-        let regionId = try extractUserRegion(
-          from: ociConfigFilePath,
-          profile: ociProfileName
-        )
-        let region = Region.from(regionId: regionId ?? "") ?? .iad
-        let signer = try APIKeySigner(
-          configFilePath: ociConfigFilePath,
-          configName: ociProfileName
-        )
-        let sut = try ObjectStorageClient(region: region, signer: signer)
-        
-        let listsWorkRequests = try? await sut.listWorkRequests(compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q")
-        
-        #expect(listsWorkRequests != nil, "The operation should succeed") 
+
+  // MARK: - Lists work requests
+  @Test("ListWorkRequests returns with requests in the compartment")
+  func listWorkRequestsWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let listsWorkRequests = try? await sut.listWorkRequests(compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q")
+
+    #expect(listsWorkRequests != nil, "The operation should succeed")
+  }
+
+  // MARK: - Lists buckets
+  @Test("ListBuckets returns with the name of the buckets in the compartment")
+  func listsBucketsWithAPIKeySignerReturnsMoreThanZero() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+
+    let listOfBuckets = try await sut.listBuckets(
+      namespaceName: "frjfldcyl3la",
+      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
+    )
+
+    // Lists all buckets in the compartment
+    for bucket in listOfBuckets {
+      print(bucket.name)
     }
-    
-    // MARK: - Lists buckets
-    /// Creates bucket must be proceed.
-    @Test func listsBucketsWithAPIKeySignerReturnsMoreThanZero() async throws {
-      let regionId = try extractUserRegion(
-        from: ociConfigFilePath,
-        profile: ociProfileName
-      )
-      let region = Region.from(regionId: regionId ?? "") ?? .iad
-      let signer = try APIKeySigner(
-        configFilePath: ociConfigFilePath,
-        configName: ociProfileName
-      )
-      let sut = try ObjectStorageClient(region: region, signer: signer)
+    #expect(
+      listOfBuckets.count > 0,
+      "Number of buckets should be greater than zero"
+    )
+  }
 
-      let listOfBuckets = try await sut.listBuckets(
-        namespaceName: "frjfldcyl3la",
-        compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
-      )
+  // MARK: -  Deletes object
+  @Test("DeleteObject deletes the specified object with name special characters")
+  func deletesObjectWithAPIKeySigner() async throws {
+    let regionId = try extractUserRegion(
+      from: ociConfigFilePath,
+      profile: ociProfileName
+    )
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let signer = try APIKeySigner(
+      configFilePath: ociConfigFilePath,
+      configName: ociProfileName
+    )
+    let sut = try ObjectStorageClient(region: region, signer: signer)
+    // 2 secomds delay before deletion
+    try await Task.sleep(nanoseconds: 2_000_000_000)
 
-      // Lists all buckets in the compartment
-      for bucket in listOfBuckets {
-        print(bucket.name)
-      }
-      #expect(
-        listOfBuckets.count > 0,
-        "Number of buckets should be greater than zero"
-      )
-    }
-    
-    // MARK: -  Deletes object
-    @Test func deletesObjectWithAPIKeySigner() async throws {
-      let regionId = try extractUserRegion(
-        from: ociConfigFilePath,
-        profile: ociProfileName
-      )
-      let region = Region.from(regionId: regionId ?? "") ?? .iad
-      let signer = try APIKeySigner(
-        configFilePath: ociConfigFilePath,
-        configName: ociProfileName
-      )
-      let sut = try ObjectStorageClient(region: region, signer: signer)
+    let deleteObject: Void? = try? await sut.deleteObject(
+      namespaceName: "frjfldcyl3la",
+      bucketName: "test_bucket_by_sdk",
+      objectName: "!@#$%^&*()_ 1.txt"
+    )
 
-      let deleteObject: Void? = try? await sut.deleteObject(
-        namespaceName: "frjfldcyl3la",
-        bucketName: "test_bucket_by_sdk",
-        objectName: "!@#$%^&*()_.png"
-      )
-
-      #expect(deleteObject != nil, "The operation should succeed")
-    }
+    #expect(deleteObject != nil, "The operation should succeed")
+  }
 }
