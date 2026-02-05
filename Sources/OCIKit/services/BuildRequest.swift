@@ -14,6 +14,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 /// Builds a fully configured `URLRequest` for an Object Storage API operation.
 ///
 /// This method takes an API route (conforming to `API`) and a base service
