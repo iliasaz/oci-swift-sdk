@@ -11,7 +11,7 @@ import Foundation
   import FoundationNetworking
 #endif
 
-public final class X509FederationClientBasedSecurityTokenSigner: Signer {
+public final class X509FederationClientBasedSecurityTokenSigner: Signer, @unchecked Sendable {
   private let federationClient: X509FederationClientProtocol
 
   public init(federationClient: X509FederationClientProtocol) {

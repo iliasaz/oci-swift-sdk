@@ -36,7 +36,7 @@ import Logging
 ///     print("Secret value: \(content)")
 /// }
 /// ```
-public struct SecretsClient {
+public struct SecretsClient: Sendable {
   let endpoint: URL?
   let region: Region?
   let retryConfig: RetryConfig?
