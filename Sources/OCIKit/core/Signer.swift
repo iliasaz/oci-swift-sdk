@@ -31,11 +31,11 @@ extension Digest {
   }
 }
 
-public protocol Signer {
+public protocol Signer: Sendable {
   func sign(_ req: inout URLRequest) throws
 }
 
-public protocol X509FederationClientProtocol {
+public protocol X509FederationClientProtocol: Sendable {
   func currentSecurityToken() throws -> String
   func currentPrivateKey() throws -> _RSA.Signing.PrivateKey
 }

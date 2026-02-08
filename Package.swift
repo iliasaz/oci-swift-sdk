@@ -1,4 +1,4 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 // Copyright 2024 Ilia Sazonov
 // SPDX-License-Identifier: MIT License
 
@@ -7,8 +7,8 @@ import PackageDescription
 let package = Package(
   name: "oci-swift-sdk",
   platforms: [
-    .macOS(.v13),
-    .iOS(.v17),
+    .macOS(.v15),
+    .iOS(.v18),
   ],
   products: [
     .library(name: "OCIKit", targets: ["OCIKit"])
@@ -17,6 +17,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-crypto.git", from: "3.2.0"),
     .package(url: "https://github.com/iliasaz/Perfect-INIParser.git", branch: "master"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+    .package(url: "https://github.com/apple/swift-configuration.git", from: "1.0.0"),
   ],
   targets: [
     .target(
@@ -26,6 +27,7 @@ let package = Package(
         .product(name: "_CryptoExtras", package: "swift-crypto"),
         .product(name: "INIParser", package: "Perfect-INIParser"),
         .product(name: "Logging", package: "swift-log"),
+        .product(name: "Configuration", package: "swift-configuration"),
       ]
     ),
     .testTarget(

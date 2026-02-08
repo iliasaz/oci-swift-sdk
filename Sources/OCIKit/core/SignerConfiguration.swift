@@ -6,9 +6,11 @@
 //  Created by Alex (AI) on 9/12/25.
 //
 
+import Configuration
 import Crypto
 import Foundation
 import INIParser
+import SystemPackage
 import _CryptoExtras
 
 public enum ConfigErrors: Error, LocalizedError {
@@ -72,7 +74,7 @@ private func extractPemPrivateKeyBlock(from raw: String) -> String? {
   return nil
 }
 
-public struct SignerConfiguration {
+public struct SignerConfiguration: Sendable {
   public let name: String
   public let privateKey: _RSA.Signing.PrivateKey
   public let tenancyOCID: String?
@@ -156,5 +158,80 @@ public struct SignerConfiguration {
       securityToken: token,
       region: region
     )
+  }
+
+  /// Loads API Key configuration from a `.env` file or process environment using swift-configuration.
+  ///
+  /// Expected keys in the `.env` file:
+  /// ```
+  /// OCI_TENANCY=ocid1.tenancy.oc1..xxxxx
+  /// OCI_USER=ocid1.user.oc1..xxxxx
+  /// OCI_FINGERPRINT=aa:bb:cc:dd:ee:ff
+  /// OCI_KEY_FILE=~/.oci/oci_api_key.pem
+  /// OCI_REGION=eu-frankfurt-1
+  /// ```
+  ///
+  /// For deployments where a key file isn't available (e.g. fly.io), use `OCI_KEY_CONTENT`
+  /// with the base64-encoded PEM file instead of `OCI_KEY_FILE`:
+  /// ```
+  /// fly secrets set OCI_KEY_CONTENT=$(base64 < ~/.oci/oci_api_key.pem)
+  /// ```
+  public static func fromEnvForAPIKey(envFilePath: String = ".env") async throws -> SignerConfiguration {
+    let provider: EnvironmentVariablesProvider
+    if FileManager.default.fileExists(atPath: envFilePath) {
+      provider = try await EnvironmentVariablesProvider(
+        environmentFilePath: FilePath(envFilePath)
+      )
+    }
+    else {
+      provider = EnvironmentVariablesProvider()
+    }
+    let config = ConfigReader(provider: provider)
+
+    guard let fingerprint = config.string(forKey: "oci.fingerprint") else { throw ConfigErrors.missingFingerprint }
+    guard let userOCID = config.string(forKey: "oci.user") else { throw ConfigErrors.missingUser }
+    guard let tenancyOCID = config.string(forKey: "oci.tenancy") else { throw ConfigErrors.missingTenancy }
+    guard let region = config.string(forKey: "oci.region") else { throw ConfigErrors.missingRegion }
+
+    // OCI_KEY_CONTENT (base64-encoded PEM) takes priority over OCI_KEY_FILE (path)
+    let pemString: String
+    if let keyContent = config.string(forKey: "oci.key.content"),
+      let decoded = Data(base64Encoded: keyContent),
+      let decodedString = String(data: decoded, encoding: .utf8)
+    {
+      pemString = extractPemPrivateKeyBlock(from: decodedString) ?? decodedString
+    }
+    else if let keyfilePath = config.string(forKey: "oci.key.file"),
+      let keyFileContents = try? String(contentsOfFile: expandTilde(keyfilePath), encoding: .utf8)
+    {
+      pemString = extractPemPrivateKeyBlock(from: keyFileContents) ?? keyFileContents
+    }
+    else {
+      throw ConfigErrors.missingKeyfile
+    }
+
+    guard let privateKey = try? _RSA.Signing.PrivateKey(pemRepresentation: pemString) else { throw ConfigErrors.notPemFormat }
+
+    return SignerConfiguration(
+      name: "ENV",
+      privateKey: privateKey,
+      tenancyOCID: tenancyOCID,
+      userOCID: userOCID,
+      fingerprint: fingerprint,
+      securityToken: nil,
+      region: region
+    )
+  }
+
+  /// Tries the OCI config file first; if it doesn't exist, falls back to a `.env` file.
+  public static func resolveForAPIKey(
+    configFilePath: String = "\(NSHomeDirectory())/.oci/config",
+    configName: String = "DEFAULT",
+    envFilePath: String = ".env"
+  ) async throws -> SignerConfiguration {
+    if FileManager.default.fileExists(atPath: expandTilde(configFilePath)) {
+      return try fromFileForAPIKey(configFilePath: configFilePath, configName: configName)
+    }
+    return try await fromEnvForAPIKey(envFilePath: envFilePath)
   }
 }

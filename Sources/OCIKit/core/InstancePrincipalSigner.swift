@@ -41,7 +41,7 @@ public struct InstancePrincipalSigner: Signer {
 
 // MARK: - Federation Client (Minimal)
 
-final class InstancePrincipalsFederationClient: X509FederationClientProtocol {
+final class InstancePrincipalsFederationClient: X509FederationClientProtocol, @unchecked Sendable {
   // IMDS constants
   private static let metadataBaseURL: String = {
     if let v = ProcessInfo.processInfo.environment["OCI_METADATA_BASE_URL"], !v.isEmpty {

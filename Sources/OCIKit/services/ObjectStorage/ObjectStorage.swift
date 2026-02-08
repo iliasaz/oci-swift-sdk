@@ -19,7 +19,7 @@ import Logging
   import FoundationNetworking
 #endif
 
-public struct ObjectStorageClient {
+public struct ObjectStorageClient: Sendable {
   let endpoint: URL?
   let region: Region?
   let retryConfig: RetryConfig?
@@ -2603,7 +2603,7 @@ public struct ObjectStorageClient {
 
 // TODO: Find proper place for these below
 // Retry configuration
-public struct RetryConfig {
+public struct RetryConfig: Sendable {
   let maxAttempts: Int
   let baseDelay: TimeInterval
 }

@@ -19,7 +19,7 @@ import Logging
   import FoundationNetworking
 #endif
 
-public struct IAMClient {
+public struct IAMClient: Sendable {
   let endpoint: URL?
   let region: Region?
   let retryConfig: RetryConfig?
