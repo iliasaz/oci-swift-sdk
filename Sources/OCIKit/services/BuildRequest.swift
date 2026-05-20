@@ -38,7 +38,7 @@ import Foundation
 ///     typically derived from the region (e.g. `https://objectstorage.eu-frankfurt-1.oraclecloud.com`).
 ///
 /// - Throws:
-///   - `ObjectStorageError.invalidURL` if the base endpoint cannot be parsed
+///   - `BuildRequestError.invalidURL` if the base endpoint cannot be parsed
 ///     or if the final URL cannot be constructed after applying path and query items.
 ///
 /// - Returns: A configured `URLRequest` containing the full URL, HTTP method,
@@ -50,7 +50,7 @@ public func buildRequest(api: API, endpoint: URL) throws -> URLRequest {
       resolvingAgainstBaseURL: false
     )
   else {
-    throw ObjectStorageError.invalidURL("Enpoint URL is invalid")
+    throw BuildRequestError.invalidURL("Enpoint URL is invalid")
   }
 
   // Apply the API-specific path
@@ -78,4 +78,19 @@ public func buildRequest(api: API, endpoint: URL) throws -> URLRequest {
   request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
   return request
+}
+
+// MARK: - BuildRequestError
+/// BuildRequest-related error
+public enum BuildRequestError: Error {
+  case invalidURL(String)
+}
+
+extension BuildRequestError: LocalizedError {
+  public var errorDescription: String? {
+    switch self {
+    case .invalidURL(let url):
+      return "Provided URL is invalid: \(url)"
+    }
+  }
 }
