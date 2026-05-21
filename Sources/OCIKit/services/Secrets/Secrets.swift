@@ -72,7 +72,8 @@ public struct SecretsClient: Sendable {
     if let endpoint, let endpointURL = URL(string: endpoint) {
       self.endpoint = endpointURL
       self.region = nil
-    } else {
+    }
+    else {
       guard let region else {
         throw SecretsError.missingRequiredParameter("Either endpoint or region must be specified.")
       }
@@ -138,7 +139,8 @@ public struct SecretsClient: Sendable {
     do {
       let secretBundle = try JSONDecoder().decode(SecretBundle.self, from: data)
       return secretBundle
-    } catch {
+    }
+    catch {
       throw SecretsError.jsonDecodingError("Failed to decode response data to SecretBundle: \(error)")
     }
   }
@@ -203,7 +205,8 @@ public struct SecretsClient: Sendable {
     do {
       let secretBundle = try JSONDecoder().decode(SecretBundle.self, from: data)
       return secretBundle
-    } catch {
+    }
+    catch {
       throw SecretsError.jsonDecodingError("Failed to decode response data to SecretBundle: \(error)")
     }
   }
@@ -262,7 +265,8 @@ public struct SecretsClient: Sendable {
     do {
       let versions = try JSONDecoder().decode([SecretBundleVersionSummary].self, from: data)
       return versions
-    } catch {
+    }
+    catch {
       throw SecretsError.jsonDecodingError("Failed to decode response data to [SecretBundleVersionSummary]: \(error)")
     }
   }
