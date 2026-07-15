@@ -104,3 +104,8 @@ postgres/oracle_fdw/**
 
 # Oracle wallet files
 oracle/*.pem
+
+# Claude
+.claude/
+CLAUDE.md
+

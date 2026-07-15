@@ -13,9 +13,10 @@ Support for OCI services is being added incrementally, starting with those curre
 - [x] API Key authN
 - [x] GenAI inference (common models)
 - [x] Instance Principal authN
-- [ ] Resource Principal authN
+- [x] Resource Principal authN (v2.2 — Container Instances, Functions, Data Science)
+- [ ] OKE Workload Identity authN (planned — needs custom-CA TLS to the in-cluster proxymux)
 - [x] Object Storage
-- [ ] Container Instances
+- [x] Container Instances
 - [x] GenAI inference (custom models)
 - [x] Identity & Access Management (compartments)
 - [x] Secrets (secret bundles)

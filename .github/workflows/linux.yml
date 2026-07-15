@@ -26,7 +26,7 @@ env:
   # Regex (OR-separated) of swift-testing suite type names that are pure unit
   # tests — no ~/.oci/config, no network, no env vars. These MUST pass in CI.
   UNIT_TEST_FILTER: >-
-    SecretBundleDecodingTests|SecretBundleContentDetailsDecodingTests|SecretBundleVersionSummaryDecodingTests|SecretsEnumsTests|SecretsRouterTests|SecretsErrorTests
+    SecretBundleDecodingTests|SecretBundleContentDetailsDecodingTests|SecretBundleVersionSummaryDecodingTests|SecretsEnumsTests|SecretsRouterTests|SecretsErrorTests|ResourcePrincipalSourceTests|ResourcePrincipalTokenTests|ResourcePrincipalEnvironmentTests|ResourcePrincipalSigningTests|ContainerInstancesRouterTests|ContainerInstancesEnumsTests|ContainerInstancesModelEncodingTests|ContainerInstancesModelDecodingTests
 
 jobs:
   build-and-test:
