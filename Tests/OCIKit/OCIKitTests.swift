@@ -39,7 +39,7 @@ final class OCIKitTests: XCTestCase {
     }
 
     var req = URLRequest(url: URL(string: "https://objectstorage.\(userRegion).oraclecloud.com/n")!)
-    try signer.sign(&req)
+    try await signer.sign(&req)
     logger.info(">>> All Headers: >>> \n\(req.allHTTPHeaderFields ?? [:])\n>>>>>>>>\n")
 
     let (data, response) = try await URLSession.shared.data(for: req)

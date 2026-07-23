@@ -34,25 +34,22 @@
 // The ephemeral key is regenerated on every refresh, and the service-account
 // token is re-read from disk each time so a rotated token is picked up.
 //
-// ## Sync / async design
+// ## Concurrency
 //
-// The token exchange is a network round-trip, but ``Signer/sign(_:)`` is
-// synchronous. To honor the project's "async/await throughout, never block"
-// rule, this signer decouples the two and guards its cache with a `Mutex`
-// (`Synchronization`) — whose `withLock` is safe from async contexts — rather
-// than a blocking `NSLock`/`DispatchSemaphore`:
+// The token exchange is a network round-trip. This signer is an `actor`, so its
+// cached RPST + ephemeral key are protected by actor isolation rather than a
+// lock:
 //
 //   - ``fromEnvironment(transport:logger:_:)`` is `async` and performs the first
 //     exchange eagerly, so the returned signer is ready to sign.
 //   - ``refresh()`` / ``refreshIfNeeded()`` are `async` and perform the exchange.
 //     Concurrent refreshes are coalesced into a single in-flight exchange.
-//   - ``sign(_:)`` is synchronous and uses only cached material. When the cached
-//     RPST is past its half-life it schedules a **non-blocking** background
-//     refresh so subsequent requests pick up a fresh token, but it never blocks.
+//   - ``sign(_:)`` refreshes inline when the cached RPST is missing or past its
+//     half-life (`await refreshIfNeeded()`), then signs.
 //
-// Long-running servers should call ``refreshIfNeeded()`` at the start of each
-// logical operation (see the `swift-oke` example) so the token never fully
-// expires between requests.
+// Long-running servers may still call ``refreshIfNeeded()`` at the start of each
+// logical operation (see the `swift-oke` example) to warm the token ahead of a
+// latency-sensitive request.
 //
 // ## TLS to the proxymux
 //
@@ -76,7 +73,6 @@
 import Crypto
 import Foundation
 import Logging
-import Synchronization
 import _CryptoExtras
 
 #if canImport(FoundationNetworking)
@@ -185,17 +181,17 @@ enum ServiceAccountTokenSource: Equatable, Sendable {
 /// try await signer.refreshIfNeeded()
 /// let data = try await client.getObject(namespaceName: ns, bucketName: b, objectName: o)
 /// ```
-public final class OKEWorkloadIdentitySigner: RefreshableSigner {
+public actor OKEWorkloadIdentitySigner: RefreshableSigner {
   /// The full proxymux token-exchange endpoint.
-  let proxymuxEndpoint: URL
+  public nonisolated let proxymuxEndpoint: URL
   /// Where the SA token is read from.
   let saTokenSource: ServiceAccountTokenSource
   /// The CA cert path used to verify the proxymux TLS cert. Stored for callers
   /// that inject a CA-pinning transport; the default `URLSession` transport
   /// cannot pin it in-process and relies on the OS trust store instead.
-  public let caCertPath: String
+  public nonisolated let caCertPath: String
   /// The region id reported by `OCI_RESOURCE_PRINCIPAL_REGION`, if any.
-  public let region: String?
+  public nonisolated let region: String?
 
   private let transport: HTTPClient
   private let logger: Logger
@@ -204,16 +200,13 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
   /// `iat` claim (so a half-life cannot be computed).
   private static let fallbackJitterSeconds = 60
 
-  /// All mutable state, guarded by a `Mutex` (async-safe scoped locking).
-  private struct State {
-    var token: String?
-    var key: _RSA.Signing.PrivateKey?
-    var issuedAt: Int?
-    var expiry: Int?
-    /// The in-flight refresh, if any; used to coalesce concurrent refreshes.
-    var inFlight: Task<Void, Error>?
-  }
-  private let state = Mutex(State())
+  // Actor-isolated cache.
+  private var token: String?
+  private var key: _RSA.Signing.PrivateKey?
+  private var issuedAt: Int?
+  private var expiry: Int?
+  /// The in-flight refresh, if any; used to coalesce concurrent refreshes.
+  private var inFlight: Task<Void, Error>?
 
   // MARK: Designated init
 
@@ -309,54 +302,41 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
 
   // MARK: Signer
 
-  public func sign(_ req: inout URLRequest) throws {
-    let now = Int(Date().timeIntervalSince1970)
-    let snapshot: (token: String, key: _RSA.Signing.PrivateKey, valid: Bool)? = state.withLock { s in
-      guard let token = s.token, let key = s.key else { return nil }
-      return (token, key, Self.isValid(s, now: now))
-    }
-    guard let snapshot else { throw OKEWorkloadIdentityError.notPrimed }
-
-    // Past half-life: warm the cache for the next request without blocking this one.
-    if !snapshot.valid {
-      scheduleBackgroundRefresh()
-    }
-    try SecurityTokenSigner(securityToken: snapshot.token, privateKey: snapshot.key).sign(&req)
+  public func sign(_ req: inout URLRequest) async throws {
+    try await refreshIfNeeded()
+    guard let token, let key else { throw OKEWorkloadIdentityError.notPrimed }
+    try await SecurityTokenSigner(securityToken: token, privateKey: key).sign(&req)
   }
 
   // MARK: Refresh
 
-  /// Marks the cache stale and schedules a non-blocking background refresh, then
-  /// returns immediately. Called by ``HTTPClient/send(_:signer:retry:logger:)``
-  /// after a `401`. Because the exchange is asynchronous, the refresh may not
-  /// have completed by the time the caller's single immediate retry re-signs;
-  /// the recovered token is picked up by the next request. For guaranteed
-  /// freshness, `await` ``refreshIfNeeded()`` before the operation.
-  public func forceRefresh() throws {
-    state.withLock { $0.expiry = 0 }  // force isValid -> false
-    scheduleBackgroundRefresh()
+  /// Invalidates the cache and re-exchanges so the next ``sign(_:)`` uses fresh
+  /// credentials. Called by ``HTTPClient/send(_:signer:retry:logger:)`` after a
+  /// `401`; because it is `async`, the caller's immediate retry re-signs with the
+  /// recovered token.
+  public func forceRefresh() async throws {
+    expiry = 0  // invalidate any concurrently-observed cached token
+    try await refresh()
   }
 
   /// Refreshes the token only if the cache is empty or past its half-life.
   public func refreshIfNeeded() async throws {
     let now = Int(Date().timeIntervalSince1970)
-    let valid = state.withLock { s in s.token != nil && s.key != nil && Self.isValid(s, now: now) }
-    if valid { return }
+    if isValid(now: now) { return }
     try await refresh()
   }
 
   /// Performs (or joins an in-flight) token exchange with the proxymux and
-  /// updates the cached RPST + ephemeral key.
+  /// updates the cached RPST + ephemeral key. Concurrent callers coalesce onto
+  /// one exchange.
   public func refresh() async throws {
-    let task: Task<Void, Error> = state.withLock { s in
-      if let existing = s.inFlight { return existing }
-      let created = Task { [self] in
-        defer { state.withLock { $0.inFlight = nil } }
-        try await performRefresh()
-      }
-      s.inFlight = created
-      return created
+    if let existing = inFlight {
+      try await existing.value
+      return
     }
+    let task = Task { try await self.performRefresh() }
+    inFlight = task
+    defer { inFlight = nil }
     try await task.value
   }
 
@@ -399,18 +379,11 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
     let rpst = try Self.decodeRPST(fromResponseBody: data)
     let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: rpst)
 
-    state.withLock { s in
-      s.token = rpst
-      s.key = key
-      s.issuedAt = claims.issuedAt
-      s.expiry = claims.expiry
-    }
+    self.token = rpst
+    self.key = key
+    self.issuedAt = claims.issuedAt
+    self.expiry = claims.expiry
     logger.debug("OKE workload identity: obtained RPST (exp=\(claims.expiry.map(String.init) ?? "nil"))")
-  }
-
-  /// Fires a background refresh (coalesced by ``refresh()``). Non-blocking.
-  private func scheduleBackgroundRefresh() {
-    Task { [self] in try? await refresh() }
   }
 
   /// Reads and validates the service-account token, re-reading files each call.
@@ -435,16 +408,16 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
     return token
   }
 
-  /// Whether the cached token is still within its half-life.
-  private static func isValid(_ s: State, now: Int) -> Bool {
-    guard s.token != nil, s.key != nil else { return false }
-    guard let exp = s.expiry else { return true }  // no exp to evaluate: keep it
+  /// Whether the cached token is present and still within its half-life.
+  private func isValid(now: Int) -> Bool {
+    guard token != nil, key != nil else { return false }
+    guard let exp = expiry else { return true }  // no exp to evaluate: keep it
     let threshold: Int
-    if let iat = s.issuedAt, exp > iat {
+    if let iat = issuedAt, exp > iat {
       threshold = exp - (exp - iat) / 2  // midpoint of the validity window
     }
     else {
-      threshold = exp - fallbackJitterSeconds
+      threshold = exp - Self.fallbackJitterSeconds
     }
     return now < threshold
   }

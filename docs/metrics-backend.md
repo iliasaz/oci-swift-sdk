@@ -59,7 +59,7 @@ import CoreMetrics
 import Logging      // for the `Logger` handed to the factory
 import OCIKit
 
-let signer = try InstancePrincipalSigner()   // or any other signer — see the deployment guide
+let signer = try await InstancePrincipalSigner.fromMetadata()   // or any other signer — see the deployment guide
 let client = try MonitoringClient(region: .phx, signer: signer)
 
 let factory = OCIMetricsFactory(

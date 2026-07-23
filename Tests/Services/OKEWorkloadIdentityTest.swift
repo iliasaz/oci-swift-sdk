@@ -325,7 +325,7 @@ struct OKEWorkloadIdentityExchangeTests {
 
     var req = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
     req.httpMethod = "GET"
-    try signer.sign(&req)
+    try await signer.sign(&req)
 
     let auth = req.value(forHTTPHeaderField: "Authorization")
     #expect(auth?.contains("keyId=\"ST$\(rpst)\"") == true)
@@ -333,13 +333,20 @@ struct OKEWorkloadIdentityExchangeTests {
     #expect(auth?.contains("x-content-sha256") == false)  // GET has no signed body
   }
 
-  @Test("sign() before priming throws notPrimed")
-  func signBeforePrimeThrows() {
-    let signer = makeSigner(saToken: validSAToken(), transport: unusedTransport)
-    var req = URLRequest(url: URL(string: "https://example.com/")!)
-    #expect(throws: OKEWorkloadIdentityError.notPrimed) {
-      try signer.sign(&req)
-    }
+  @Test("sign() with no cached token self-primes via one exchange, then signs")
+  func signSelfPrimes() async throws {
+    let rpst = makeJWT(claims: ["iat": Int(Date().timeIntervalSince1970), "exp": futureExp])
+    let recorder = Recorder()
+    let signer = makeSigner(saToken: validSAToken(), transport: recordingTransport(rpst: rpst, recorder: recorder))
+
+    var req = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
+    req.httpMethod = "GET"
+    // No explicit refresh() first: sign() must exchange inline before signing.
+    try await signer.sign(&req)
+
+    #expect(recorder.count == 1)
+    let auth = req.value(forHTTPHeaderField: "Authorization")
+    #expect(auth?.contains("keyId=\"ST$\(rpst)\"") == true)
   }
 
   @Test("A 403 from the proxymux surfaces as tokenExchangeFailed(403)")

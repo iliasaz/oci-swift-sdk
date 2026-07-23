@@ -93,24 +93,24 @@ struct ResourcePrincipalTokenTests {
 
 struct ResourcePrincipalEnvironmentTests {
   @Test("Missing version throws versionNotDefined")
-  func missingVersion() {
-    #expect(throws: ResourcePrincipalError.versionNotDefined) {
-      _ = try ResourcePrincipalSigner.fromEnvironment([:])
+  func missingVersion() async {
+    await #expect(throws: ResourcePrincipalError.versionNotDefined) {
+      _ = try await ResourcePrincipalSigner.fromEnvironment([:])
     }
   }
 
   @Test("Unsupported version throws unsupportedVersion")
-  func unsupportedVersion() {
-    #expect(throws: ResourcePrincipalError.unsupportedVersion("1.1")) {
-      _ = try ResourcePrincipalSigner.fromEnvironment(["OCI_RESOURCE_PRINCIPAL_VERSION": "1.1"])
+  func unsupportedVersion() async {
+    await #expect(throws: ResourcePrincipalError.unsupportedVersion("1.1")) {
+      _ = try await ResourcePrincipalSigner.fromEnvironment(["OCI_RESOURCE_PRINCIPAL_VERSION": "1.1"])
     }
   }
 
   @Test("Missing RPST throws missingSessionToken")
-  func missingRPST() throws {
+  func missingRPST() async throws {
     let (_, pem) = try makeKeyPair()
-    #expect(throws: ResourcePrincipalError.missingSessionToken) {
-      _ = try ResourcePrincipalSigner.fromEnvironment([
+    await #expect(throws: ResourcePrincipalError.missingSessionToken) {
+      _ = try await ResourcePrincipalSigner.fromEnvironment([
         "OCI_RESOURCE_PRINCIPAL_VERSION": "2.2",
         "OCI_RESOURCE_PRINCIPAL_PRIVATE_PEM": pem,
       ])
@@ -118,10 +118,10 @@ struct ResourcePrincipalEnvironmentTests {
   }
 
   @Test("Missing private key throws missingPrivateKey")
-  func missingKey() {
+  func missingKey() async {
     let jwt = makeJWT(claims: ["exp": 1_893_456_000])
-    #expect(throws: ResourcePrincipalError.missingPrivateKey) {
-      _ = try ResourcePrincipalSigner.fromEnvironment([
+    await #expect(throws: ResourcePrincipalError.missingPrivateKey) {
+      _ = try await ResourcePrincipalSigner.fromEnvironment([
         "OCI_RESOURCE_PRINCIPAL_VERSION": "2.2",
         "OCI_RESOURCE_PRINCIPAL_RPST": jwt,
       ])
@@ -129,10 +129,10 @@ struct ResourcePrincipalEnvironmentTests {
   }
 
   @Test("Valid environment builds a signer and exposes the region")
-  func buildsFromEnvironment() throws {
+  func buildsFromEnvironment() async throws {
     let (_, pem) = try makeKeyPair()
     let jwt = makeJWT(claims: ["exp": Int(Date().timeIntervalSince1970) + 3600])
-    let signer = try ResourcePrincipalSigner.fromEnvironment([
+    let signer = try await ResourcePrincipalSigner.fromEnvironment([
       "OCI_RESOURCE_PRINCIPAL_VERSION": "2.2",
       "OCI_RESOURCE_PRINCIPAL_RPST": jwt,
       "OCI_RESOURCE_PRINCIPAL_PRIVATE_PEM": pem,
@@ -146,14 +146,14 @@ struct ResourcePrincipalEnvironmentTests {
 
 struct ResourcePrincipalSigningTests {
   @Test("Signs a request with an ST$<rpst> keyId")
-  func signsWithSecurityTokenKeyId() throws {
+  func signsWithSecurityTokenKeyId() async throws {
     let (_, pem) = try makeKeyPair()
     let jwt = makeJWT(claims: ["exp": Int(Date().timeIntervalSince1970) + 3600])
     let signer = ResourcePrincipalSigner(sessionToken: jwt, privateKeyPEM: pem, region: "us-phoenix-1")
 
     var req = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
     req.httpMethod = "GET"
-    try signer.sign(&req)
+    try await signer.sign(&req)
 
     let auth = req.value(forHTTPHeaderField: "Authorization")
     #expect(auth != nil)
@@ -164,12 +164,12 @@ struct ResourcePrincipalSigningTests {
   }
 
   @Test("Invalid PEM surfaces as invalidPrivateKey at sign time")
-  func invalidKeyThrows() {
+  func invalidKeyThrows() async {
     let jwt = makeJWT(claims: ["exp": Int(Date().timeIntervalSince1970) + 3600])
     let signer = ResourcePrincipalSigner(sessionToken: jwt, privateKeyPEM: "not-a-pem", region: nil)
     var req = URLRequest(url: URL(string: "https://example.com/")!)
-    #expect(throws: ResourcePrincipalError.invalidPrivateKey) {
-      try signer.sign(&req)
+    await #expect(throws: ResourcePrincipalError.invalidPrivateKey) {
+      try await signer.sign(&req)
     }
   }
 }

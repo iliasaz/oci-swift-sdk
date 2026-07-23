@@ -69,7 +69,7 @@ public struct RuntimeContext: Sendable {
   ///
   /// - Throws: ``OCIKit/ResourcePrincipalError`` if the environment does not carry a
   ///   valid Resource Principal (e.g. when running outside OCI Functions).
-  public func resourcePrincipalSigner() throws -> ResourcePrincipalSigner {
-    try ResourcePrincipalSigner.fromEnvironment(config)
+  public func resourcePrincipalSigner() async throws -> ResourcePrincipalSigner {
+    try await ResourcePrincipalSigner.fromEnvironment(config)
   }
 }
