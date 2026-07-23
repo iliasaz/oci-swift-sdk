@@ -32,11 +32,61 @@ struct ObjectStorageTest {
   let ociConfigFilePath: String
   let ociProfileName: String
 
+  // Tenancy-specific test resources, supplied by the test plan.
+  // See docs/live-tests.md and oci-swift-sdk-Package.xctestplan.template.
+  let testNamespace: String
+  let testNamespace2: String
+  let testBucket: String
+  let testReplicaBucket: String
+  let testParBucket: String
+  let testCopyDestBucket: String
+  let testObject: String
+  let testObjectSvg: String
+  let testObjectTxt: String
+  let testUploadFilePath: String
+  let testDestRegion: String
+  let testCompartmentId: String
+  let testTenancyId: String
+  let testMetadataCompartmentId: String
+  // Per-resource identifiers: these change whenever the resource is recreated.
+  let testParURLRead: String
+  let testParURLWrite: String
+  let testParIdGet: String
+  let testParId: String
+  let testObjectVersionId: String
+  let testReplicationId: String
+  let testRetentionRuleIdGet: String
+  let testRetentionRuleIdDelete: String
+  let testRetentionRuleIdUpdate: String
+
   init() throws {
     _ = Self.bootstrapLogging
     let env = ProcessInfo.processInfo.environment
     ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
     ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    testNamespace = env["OCI_NAMESPACE"] ?? ""
+    testNamespace2 = env["OCI_OS_NAMESPACE_2"] ?? ""
+    testBucket = env["OCI_BUCKET"] ?? ""
+    testReplicaBucket = env["OCI_OS_REPLICA_BUCKET"] ?? ""
+    testParBucket = env["OCI_OS_PAR_BUCKET"] ?? ""
+    testCopyDestBucket = env["OCI_OS_COPY_DEST_BUCKET"] ?? ""
+    testObject = env["OCI_OBJECT"] ?? ""
+    testObjectSvg = env["OCI_OS_OBJECT_SVG"] ?? ""
+    testObjectTxt = env["OCI_OS_OBJECT_TXT"] ?? ""
+    testUploadFilePath = env["OCI_OS_UPLOAD_FILE"] ?? ""
+    testDestRegion = env["OCI_OS_DEST_REGION"] ?? ""
+    testCompartmentId = env["OCI_COMPARTMENT_ID"] ?? ""
+    testTenancyId = env["OCI_TENANCY_ID"] ?? ""
+    testMetadataCompartmentId = env["OCI_OS_METADATA_COMPARTMENT_ID"] ?? ""
+    testParURLRead = env["OCI_OS_PAR_URL_READ"] ?? ""
+    testParURLWrite = env["OCI_OS_PAR_URL_WRITE"] ?? ""
+    testParIdGet = env["OCI_OS_PAR_ID_GET"] ?? ""
+    testParId = env["OCI_OS_PAR_ID"] ?? ""
+    testObjectVersionId = env["OCI_OS_OBJECT_VERSION_ID"] ?? ""
+    testReplicationId = env["OCI_OS_REPLICATION_ID"] ?? ""
+    testRetentionRuleIdGet = env["OCI_OS_RETENTION_RULE_ID_GET"] ?? ""
+    testRetentionRuleIdDelete = env["OCI_OS_RETENTION_RULE_ID_DELETE"] ?? ""
+    testRetentionRuleIdUpdate = env["OCI_OS_RETENTION_RULE_ID_UPDATE"] ?? ""
   }
 
   // MARK: - Copies object
@@ -56,16 +106,16 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let object = CopyObjectDetails(
-      destinationBucket: "Bucket_Parks_of_Prague",
-      destinationNamespace: "frjfldcyl3la",
-      destinationObjectName: "Frame.png",
-      destinationRegion: "eu-frankfurt-1",
-      sourceObjectName: "Frame.png"
+      destinationBucket: testCopyDestBucket,
+      destinationNamespace: testNamespace,
+      destinationObjectName: testObject,
+      destinationRegion: testDestRegion,
+      sourceObjectName: testObject
     )
 
     let copyObject: Void? = try? await sut.copyObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       copyObjectDetails: object
     )
 
@@ -86,19 +136,19 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let bucketDetails = CreateBucketDetails(
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q",
-      name: "test_bucket_by_sdk"
+      compartmentId: testCompartmentId,
+      name: testBucket
     )
 
     let bucket = try await sut.createBucket(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: testNamespace,
       createBucketDetails: bucketDetails
     )
 
     // Prints the name of the new bucket
     logger.info("Created bucket: \(bucket.name)")
 
-    #expect(bucket.name == "test_bucket_by_sdk", "Bucket name should match the requested one")
+    #expect(bucket.name == testBucket, "Bucket name should match the requested one")
   }
 
   // MARK: - Creates archieve bucket
@@ -114,13 +164,13 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let bucketDetails = CreateBucketDetails(
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q",
+      compartmentId: testCompartmentId,
       name: "archive_test_bucket_by_sdk",
       storageTier: StorageTier.archive
     )
 
     let bucket = try await sut.createBucket(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: testNamespace,
       createBucketDetails: bucketDetails
     )
 
@@ -146,14 +196,14 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let policyDetails = CreateReplicationPolicyDetails(
-      destinationBucketName: "test_bucket_by_sdk_replica",
-      destinationRegionName: "eu-frankfurt-1",
+      destinationBucketName: testReplicaBucket,
+      destinationRegionName: testDestRegion,
       name: "Test_policy"
     )
 
     let createReplicationPolicy = try await sut.createReplicationPolicy(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       policyDetails: policyDetails
     )
 
@@ -183,8 +233,8 @@ struct ObjectStorageTest {
     )
 
     let createRetentionRule = try? await sut.createRetentionRule(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       ruleDetails: ruleDetails
     )
 
@@ -217,8 +267,8 @@ struct ObjectStorageTest {
     )
 
     let createPreauthenticatedRequest = try? await sut.createPreauthenticatedRequest(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "parbucket",
+      namespaceName: testNamespace,
+      bucketName: testParBucket,
       requestDetails: requestDetails
     )
 
@@ -245,13 +295,13 @@ struct ObjectStorageTest {
     let requestDetails = CreatePreauthenticatedRequestDetails(
       accessType: AccessType.objectRead,
       name: "PAR read only request for Frame.png",
-      objectName: "Frame.png",
+      objectName: testObject,
       timeExpires: "2025-12-31T23:59:59Z"
     )
 
     let createPreauthenticatedRequest = try? await sut.createPreauthenticatedRequest(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "parbucket",
+      namespaceName: testNamespace,
+      bucketName: testParBucket,
       requestDetails: requestDetails
     )
 
@@ -276,8 +326,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deleteBucket: Void? = try? await sut.deleteBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     #expect(deleteBucket != nil, "The operation should succeed")
@@ -297,9 +347,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deleteObject: Void? = try? await sut.deleteObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      objectName: "Frame.png"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      objectName: testObject
     )
 
     #expect(deleteObject != nil, "The operation should succeed")
@@ -318,10 +368,10 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deleteObject: Void? = try? await sut.deleteObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      objectName: "bucket.svg",
-      versionId: "e0de6bec-7543-411a-9ab8-3542669ea3b3"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      objectName: testObjectSvg,
+      versionId: testObjectVersionId
     )
 
     #expect(deleteObject != nil, "The operation should succeed")
@@ -341,9 +391,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deleteReplicationPolicy: Void? = try? await sut.deleteReplicationPolicy(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      replicationId: "824de84a-295d-44ca-be44-23b2f627b1f1"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      replicationId: testReplicationId
     )
 
     #expect(deleteReplicationPolicy != nil, "The operation should succeed")
@@ -363,9 +413,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deleteRetentionRule: Void? = try? await sut.deleteRetentionRule(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      retentionRuleId: "5e29a9ef-d900-4b4d-a76d-b81f5ddf8c55"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      retentionRuleId: testRetentionRuleIdDelete
     )
 
     #expect(deleteRetentionRule != nil, "The operation should succeed")
@@ -385,9 +435,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let deletePreauthRequest: Void? = try await sut.deletePreauthenticatedRequest(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      parId: "12345678-aaaa-bbbb-cccc-1234567890ab"  // <-- replace with valid PAR ID
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      parId: testParId  // <-- replace with valid PAR ID
     )
 
     #expect(deletePreauthRequest != nil, "The operation should succeed")
@@ -407,8 +457,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getBucket = try? await sut.getBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     // Prints the name of the bucket
@@ -452,7 +502,7 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let namespace = try await sut.getNamespace(
-      compartmentId: "ocid1.tenancy.oc1..EXAMPLE"
+      compartmentId: testTenancyId
     )
 
     #expect(!namespace.isEmpty, "Namespace should not be empty")
@@ -479,7 +529,7 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getNamespaceMetadata = try? await sut.getNamespaceMetadata(
-      namespaceName: "frjfldcyl3la"
+      namespaceName: testNamespace
     )
 
     // Prints metadata
@@ -502,7 +552,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let getObject = try? await sut.getObject(namespaceName: "frjfldcyl3la", bucketName: "test_bucket_by_sdk", objectName: "bucket.svg")
+    let getObject = try? await sut.getObject(namespaceName: testNamespace, bucketName: testBucket, objectName: testObjectSvg)
 
     #expect(getObject != nil, "The operation should succeed")
   }
@@ -521,8 +571,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getObject = try? await sut.getObject(
-      parURL: URL(string: "https://objectstorage.us-ashburn-1.oraclecloud.com/p/ugf-ZiRD-jayajvUvmJ1Uzva5ICb36kRaok7SNA1iOZU00Z1ujTPa6StuGfKSAcj/n/idhwcifwd5xy/b/myTestBucket/o/")!,
-      objectName: "dir1/test_file.txt"
+      parURL: URL(string: testParURLRead)!,
+      objectName: testObjectTxt
     )
     logger.info("downloaded object size: \(getObject?.count ?? -1)")
     #expect(getObject != nil, "The operation should succeed")
@@ -541,7 +591,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let getObject = try await sut.getObject(namespaceName: "idhwcifwd5xy", bucketName: "test_bucket_by_sdk", objectName: "test_file.txt", withObjectIntegrityCheck: true)
+    let getObject = try await sut.getObject(namespaceName: testNamespace2, bucketName: testBucket, objectName: testObjectTxt, withObjectIntegrityCheck: true)
 
     #expect(getObject.count == 12, "The operation should succeed")
   }
@@ -560,9 +610,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getReplicationPolicy: ReplicationPolicy? = try await sut.getReplicationPolicy(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      replicationId: "824de84a-295d-44ca-be44-23b2f627b1f1"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      replicationId: testReplicationId
     )
 
     // Print policy details
@@ -586,9 +636,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getPreauthenticatedRequest = try? await sut.getPreauthenticatedRequest(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      parId: "cX+WG6JFkx9HKjV7ryUv68lqBKVJGquhJHTXLGhy8MzrlcseRyil9dj2dadcTQDh:Frame.png"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      parId: testParIdGet
     )
 
     #expect(getPreauthenticatedRequest != nil, "The operation should succeed")
@@ -608,9 +658,9 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let getRetentionRule: RetentionRule? = try? await sut.getRetentionRule(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      retentionRuleId: "35c5bf43-def0-458b-a6a2-296be65d456c"
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      retentionRuleId: testRetentionRuleIdGet
     )
 
     // Prints retention rule
@@ -636,8 +686,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let headBucket: Void? = try? await sut.headBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     #expect(headBucket != nil, "The operation should succeed")
@@ -658,8 +708,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfBuckets = try await sut.listBuckets(
-      namespaceName: "frjfldcyl3la",
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
+      namespaceName: testNamespace,
+      compartmentId: testCompartmentId
     )
 
     // Lists all buckets in the compartment
@@ -687,8 +737,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfBuckets = try await sut.listBuckets(
-      namespaceName: "frjfldcyl3la",
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q",
+      namespaceName: testNamespace,
+      compartmentId: testCompartmentId,
       limit: 2
     )
 
@@ -716,8 +766,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listReplicationPolicies = try? await sut.listReplicationPolicies(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       limit: 10
     )
 
@@ -745,8 +795,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listReplicationResources = try? await sut.listReplicationPolicies(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       limit: 10
     )
 
@@ -773,8 +823,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listRetentionRules = try? await sut.listRetentionRules(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     // Prints rules
@@ -804,8 +854,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfObjects = try? await sut.listObjects(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     // Print objects
@@ -833,8 +883,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfObjects = try? await sut.listObjects(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       fields: Field.allCases
     )
 
@@ -864,8 +914,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfObjects = try? await sut.listObjects(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       fields: [.md5]
     )
 
@@ -894,7 +944,7 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfObjects = try? await sut.listObjects(
-      parURL: URL(string: "https://objectstorage.us-ashburn-1.oraclecloud.com/p/ugf-ZiRD-jayajvUvmJ1Uzva5ICb36kRaok7SNA1iOZU00Z1ujTPa6StuGfKSAcj/n/idhwcifwd5xy/b/myTestBucket/o/")!,
+      parURL: URL(string: testParURLRead)!,
       limit: 10
     )
 
@@ -926,8 +976,8 @@ struct ObjectStorageTest {
     let fields: [Field] = [.name, .size, .md5]
     let fieldsString = fields.map { $0.rawValue }.joined(separator: ",")
     let listOfObjectVersions = try? await sut.listObjectVersions(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       fields: fieldsString
     )
 
@@ -953,7 +1003,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let makeBucketWritable: ()? = try? await sut.makeBucketWritable(namespaceName: "frjfldcyl3la", bucketName: "test_bucket_by_sdk_replica")
+    let makeBucketWritable: ()? = try? await sut.makeBucketWritable(namespaceName: testNamespace, bucketName: testReplicaBucket)
 
     #expect(makeBucketWritable != nil, "The operation should succeed")
   }
@@ -971,7 +1021,7 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let makeBucketWritable: ()? = try? await sut.makeBucketWritable(namespaceName: "frjfldcyl3la", bucketName: "test_bucket_by_sdk_replica")
+    let makeBucketWritable: ()? = try? await sut.makeBucketWritable(namespaceName: testNamespace, bucketName: testReplicaBucket)
 
     #expect(makeBucketWritable != nil, "The operation should succeed")
   }
@@ -988,14 +1038,14 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let fileToUploadPath = NSHomeDirectory() + "/Desktop/CleanShot 2025-11-03 at 16.23.55.png"
+    let fileToUploadPath = testUploadFilePath
     let fileToUploadURL = URL(fileURLWithPath: fileToUploadPath)
     let data: Data = try Data(contentsOf: fileToUploadURL)
 
     do {
       try await sut.putObject(
-        namespaceName: "frjfldcyl3la",
-        bucketName: "test_bucket_by_sdk",
+        namespaceName: testNamespace,
+        bucketName: testBucket,
         objectName: "\(fileToUploadURL.lastPathComponent)",
         putObjectBody: data
       )
@@ -1019,13 +1069,13 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let fileToUploadPath = NSHomeDirectory() + "/Desktop/Frame.png"
+    let fileToUploadPath = testUploadFilePath
     let fileToUploadURL = URL(fileURLWithPath: fileToUploadPath)
     let data: Data = try Data(contentsOf: fileToUploadURL)
 
     do {
       try await sut.putObject(
-        parURL: URL(string: "https://objectstorage.eu-frankfurt-1.oraclecloud.com/p/A1q-9UNjGJtaXb8R6M3eWvzA_6wyWYN5B2LIM-3R3kol_FTVcpUyWhoPHv0gI9bp/n/frjfldcyl3la/b/parbucket/o/")!,
+        parURL: URL(string: testParURLWrite)!,
         objectName: "\(fileToUploadURL.lastPathComponent)",
         putObjectBody: data
       )
@@ -1049,14 +1099,14 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer, logger: logger)
-    let fileToUploadPath = NSHomeDirectory() + "/Desktop/Frame.png"
+    let fileToUploadPath = testUploadFilePath
     let fileToUploadURL = URL(fileURLWithPath: fileToUploadPath)
     let data: Data = try Data(contentsOf: fileToUploadURL)
 
     do {
       try await sut.putObject(
-        namespaceName: "frjfldcyl3la",
-        bucketName: "test_bucket_by_sdk",
+        namespaceName: testNamespace,
+        bucketName: testBucket,
         objectName: fileToUploadURL.lastPathComponent,
         putObjectBody: data,
         toFolder: "MyFolder/SubFolder"
@@ -1081,15 +1131,15 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer, logger: logger)
-    let fileToUploadPath = NSHomeDirectory() + "/Desktop/Frame.png"
+    let fileToUploadPath = testUploadFilePath
     let fileToUploadURL = URL(fileURLWithPath: fileToUploadPath)
     let data: Data = try Data(contentsOf: fileToUploadURL)
     let initialMD5 = data.md5base64
 
     do {
       try await sut.putObject(
-        namespaceName: "frjfldcyl3la",
-        bucketName: "test_bucket_by_sdk",
+        namespaceName: testNamespace,
+        bucketName: testBucket,
         objectName: fileToUploadURL.lastPathComponent,
         putObjectBody: data,
         toFolder: "MyFolder/SubFolder",
@@ -1118,8 +1168,8 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let reencryptBucket: Void? = try? await sut.reencryptBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     #expect(reencryptBucket != nil, "The operation should succeed")
@@ -1141,9 +1191,9 @@ struct ObjectStorageTest {
     let reecryptObjectDetails = ReencryptObjectDetails()
 
     let reencryptObject: Void? = try? await sut.reencryptObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      objectName: "Frame.png",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      objectName: testObject,
       reencryptObjectDetails: reecryptObjectDetails
     )
 
@@ -1162,11 +1212,11 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let renameObjectDetails = RenameObjectDetails(newName: "New Frame.png", sourceName: "Frame.png")
+    let renameObjectDetails = RenameObjectDetails(newName: "New Frame.png", sourceName: testObject)
 
     let renameObject: Void? = try? await sut.renameObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       renameObjectDetails: renameObjectDetails
     )
 
@@ -1185,11 +1235,11 @@ struct ObjectStorageTest {
       configName: ociProfileName
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
-    let restoreObjectDetails = RestoreObjectsDetails(objectName: "Frame.png")
+    let restoreObjectDetails = RestoreObjectsDetails(objectName: testObject)
 
     let restoreObject: Void? = try? await sut.restoreObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       restoreObjectsDetails: restoreObjectDetails
     )
 
@@ -1209,12 +1259,12 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let bucket = UpdateBucketDetails(
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
+      compartmentId: testCompartmentId
     )
 
     let updateBucket: Bucket? = try? await sut.updateBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       updateBucketDetails: bucket
     )
 
@@ -1244,8 +1294,8 @@ struct ObjectStorageTest {
     let bucket = UpdateBucketDetails(versioning: Versoning.suspended)
 
     let updateBucket: Bucket? = try? await sut.updateBucket(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       updateBucketDetails: bucket
     )
 
@@ -1273,12 +1323,12 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let metadata = UpdateNamespaceMetadataDetails(
-      defaultS3CompartmentId: "ocid1.compartment.oc1..aaaaaaaar3gnsxd7vomtvklspmmmjl5i43vd6umbuqa3f6vtgsfmmk4oeuwa",
-      defaultSwiftCompartmentId: "ocid1.compartment.oc1..aaaaaaaar3gnsxd7vomtvklspmmmjl5i43vd6umbuqa3f6vtgsfmmk4oeuwa"
+      defaultS3CompartmentId: testMetadataCompartmentId,
+      defaultSwiftCompartmentId: testMetadataCompartmentId
     )
 
     let updateNamespaceMetadata = try? await sut.updateNamespaceMetadata(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: testNamespace,
       metadata: metadata
     )
 
@@ -1304,13 +1354,13 @@ struct ObjectStorageTest {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
     let updateObjectStorageTierDetails = UpdateObjectStorageTierDetails(
-      objectName: "Frame.png",
+      objectName: testObject,
       storageTier: StorageTier.infrequentAccess
     )
 
     let updateObjectStorageTier: Void? = try? await sut.updateObjectStorageTier(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       updateObjectStorageTierDetails: updateObjectStorageTierDetails
     )
 
@@ -1337,9 +1387,9 @@ struct ObjectStorageTest {
     )
 
     let updateRetentionRule = try? await sut.updateRetentionRule(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
-      retentionRuleId: "7da01af4-236e-45eb-b37e-91ba51e2e87b",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
+      retentionRuleId: testRetentionRuleIdUpdate,
       updateRetentionRuleDetails: updateRetentionRuleDetails
     )
 

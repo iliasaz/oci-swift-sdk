@@ -25,10 +25,18 @@ struct ObjectStorageTestOnLinux {
   let ociConfigFilePath: String
   let ociProfileName: String
 
+  // Tenancy-specific test resources, supplied by the test plan.
+  let testNamespace: String
+  let testBucket: String
+  let testCompartmentId: String
+
   init() throws {
     let env = ProcessInfo.processInfo.environment
     ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
     ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    testNamespace = env["OCI_NAMESPACE"] ?? ""
+    testBucket = env["OCI_BUCKET"] ?? ""
+    testCompartmentId = env["OCI_COMPARTMENT_ID"] ?? ""
   }
 
   // MARK: - Gets namespace
@@ -69,8 +77,8 @@ struct ObjectStorageTestOnLinux {
 
     do {
       try await sut.putObject(
-        namespaceName: "frjfldcyl3la",
-        bucketName: "test_bucket_by_sdk",
+        namespaceName: testNamespace,
+        bucketName: testBucket,
         objectName: "!@#$%^&*()_ 1.txt",
         putObjectBody: dummyData
       )
@@ -98,8 +106,8 @@ struct ObjectStorageTestOnLinux {
     let originalObjects = ListObjects(nextStartWith: nil, objects: [], prefixes: nil)
 
     let receivedObjects = try await sut.listObjects(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk"
+      namespaceName: testNamespace,
+      bucketName: testBucket
     )
 
     // Update the `originalObjects` after API execution
@@ -128,7 +136,7 @@ struct ObjectStorageTestOnLinux {
     )
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
-    let listsWorkRequests = try? await sut.listWorkRequests(compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q")
+    let listsWorkRequests = try? await sut.listWorkRequests(compartmentId: testCompartmentId)
 
     #expect(listsWorkRequests != nil, "The operation should succeed")
   }
@@ -148,8 +156,8 @@ struct ObjectStorageTestOnLinux {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let listOfBuckets = try await sut.listBuckets(
-      namespaceName: "frjfldcyl3la",
-      compartmentId: "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
+      namespaceName: testNamespace,
+      compartmentId: testCompartmentId
     )
 
     // Lists all buckets in the compartment
@@ -179,8 +187,8 @@ struct ObjectStorageTestOnLinux {
     try await Task.sleep(nanoseconds: 2_000_000_000)
 
     let deleteObject: Void? = try? await sut.deleteObject(
-      namespaceName: "frjfldcyl3la",
-      bucketName: "test_bucket_by_sdk",
+      namespaceName: testNamespace,
+      bucketName: testBucket,
       objectName: "!@#$%^&*()_ 1.txt"
     )
 

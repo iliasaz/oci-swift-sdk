@@ -20,14 +20,17 @@ import Testing
 struct IAMTest {
   let ociConfigFilePath: String
   let ociProfileName: String
-  // Define your values to be used during the test
-  let testCompartment = "ocid1.compartment.oc1..aaaaaaaavlvw5pxtgzcuvru5qvindermz6g4fen2acaikxtug6l3ztjytdeq"
-  let targetParentCompartmentId = "ocid1.compartment.oc1..aaaaaaaatcmi2vv2tmuzgpajfncnqnvwvzkg2at7ez5lykdcarwtbeieyo2q"
+  // Tenancy-specific test resources, supplied by the test plan.
+  // `testCompartment` is bulk-deleted/moved/recovered by this suite.
+  let testCompartment: String
+  let targetParentCompartmentId: String
 
   init() throws {
     let env = ProcessInfo.processInfo.environment
     ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
     ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    testCompartment = env["OCI_IAM_TEST_COMPARTMENT_ID"] ?? ""
+    targetParentCompartmentId = env["OCI_COMPARTMENT_ID"] ?? ""
   }
 
   // MARK: - Bulk delete resource
