@@ -18,7 +18,6 @@ import Testing
 
 @testable import OCIKit
 
-@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct ObjectStorageTest {
   // `LoggingSystem.bootstrap` is a process-wide, call-once gate. Swift Testing
   // makes a fresh suite instance per `@Test`, so bootstrapping in `init()`
@@ -94,7 +93,7 @@ struct ObjectStorageTest {
   /// "code": "InsufficientServicePermissions",
   ///  "message": "Permissions granted to the object storage service principal \"objectstorage-eu-frankfurt-1\" to this bucket are insufficient."
   ///  "See [documentation](https://docs.oracle.com/iaas/Content/API/References/apierrors.htm) for more information about resolving this error. If you are unable to resolve this issue, run this CLI command with --debug option and contact Oracle support and provide them the full error message."
-  @Test func copiesObjectWithinRegionWithAPIKeySigner() async throws {
+  @Test(.destructive) func copiesObjectWithinRegionWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -123,7 +122,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Creates bucket
-  @Test func createsBucketWithAPIKeySigner() async throws {
+  @Test(.destructive) func createsBucketWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -152,7 +151,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Creates archieve bucket
-  @Test func createsArchiveBucketWithAPIKeySigner() async throws {
+  @Test(.destructive) func createsArchiveBucketWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -183,7 +182,7 @@ struct ObjectStorageTest {
   // MARK: - Creates replication policy
   /// `Allow service objectstorage-eu-frankfurt-1 to manage object-family in compartment your_comparment_name`
   /// Always Free Tier allows only one policy
-  @Test func createsReplicationPolicyWithAPIKeySigner() async throws {
+  @Test(.destructive) func createsReplicationPolicyWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -213,7 +212,7 @@ struct ObjectStorageTest {
   // MARK: - Creates retention rule
   /// If the bucket versioning is enabled, you cannot add retention policy.
   /// `timeRuleLocked` must be at least 14 days ahead of the current time.`
-  @Test func createsRetentionRuleWithAPIKeySigner() async throws {
+  @Test(.destructive) func createsRetentionRuleWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -246,7 +245,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Creates preauthenticated request for read/write and list entire bucket
-  @Test("Creating preauthenticated request for entire bucket and return with the link")
+  @Test("Creating preauthenticated request for entire bucket and return with the link", .destructive)
   func createsPreauthenticatedRequestWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -279,7 +278,7 @@ struct ObjectStorageTest {
     #expect(createPreauthenticatedRequest != nil, "The operation should succeed")
   }
 
-  @Test("Creating preauthenticated read only request for one file in bucket only and return with the link")
+  @Test("Creating preauthenticated read only request for one file in bucket only and return with the link", .destructive)
   func createsPreauthenticatedRequestReadOnlyWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -313,7 +312,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Deletes bucket
-  @Test func deletesBucketWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesBucketWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -334,7 +333,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: -  Deletes object
-  @Test func deletesObjectWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -355,7 +354,7 @@ struct ObjectStorageTest {
     #expect(deleteObject != nil, "The operation should succeed")
   }
 
-  @Test func deletesObjectWithVersionIdWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesObjectWithVersionIdWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -378,7 +377,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Deletes replication policy
-  @Test func deletesReplicationPolicyWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesReplicationPolicyWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -400,7 +399,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Deletes retention rule
-  @Test func deletesRetentionRuleWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesRetentionRuleWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -422,7 +421,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Deletes preauthenticated request
-  @Test func deletesPreauthenticatedRequestWithAPIKeySigner() async throws {
+  @Test(.destructive) func deletesPreauthenticatedRequestWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -558,7 +557,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Gets object from PAR bucket
-  @Test func getsObjectWithPAR() async throws {
+  @Test(.requiresEnv("OCI_OS_PAR_URL_READ")) func getsObjectWithPAR() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -593,11 +592,14 @@ struct ObjectStorageTest {
 
     let getObject = try await sut.getObject(namespaceName: testNamespace2, bucketName: testBucket, objectName: testObjectTxt, withObjectIntegrityCheck: true)
 
-    #expect(getObject.count == 12, "The operation should succeed")
+    // `withObjectIntegrityCheck: true` throws on a checksum mismatch, so reaching
+    // this point already proves the integrity check passed. The object's size is
+    // environment-specific, so only assert that content came back.
+    #expect(!getObject.isEmpty, "The downloaded object should not be empty")
   }
 
   // MARK: - Gets replication policy
-  @Test func getsReplicationPolicyWithAPIKeySigner() async throws {
+  @Test(.requiresEnv("OCI_OS_REPLICATION_ID")) func getsReplicationPolicyWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -623,7 +625,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Get preauthenticated request
-  @Test func getPreauthenticatedRequestWithAPIKeySigner() async throws {
+  @Test(.requiresEnv("OCI_OS_PAR_ID_GET")) func getPreauthenticatedRequestWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -645,7 +647,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Gets retention rule
-  @Test func getRetentionRuleWithAPIKeySigner() async throws {
+  @Test(.requiresEnv("OCI_OS_RETENTION_RULE_ID_GET")) func getRetentionRuleWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -931,7 +933,7 @@ struct ObjectStorageTest {
   }
 
   // Returning with `name`, `size`, `timeCreated` and `timeModified` using PAR
-  @Test func listObjectsWithPAR() async throws {
+  @Test(.requiresEnv("OCI_OS_PAR_URL_READ")) func listObjectsWithPAR() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -991,7 +993,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Makes bucket writable
-  @Test func makeBucketWritableWithAPIKeySigner() async throws {
+  @Test(.destructive) func makeBucketWritableWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1009,7 +1011,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Lists preauthenticated requests
-  @Test func listPreauthenticatedRequestsWithAPIKeySigner() async throws {
+  @Test(.destructive) func listPreauthenticatedRequestsWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1027,7 +1029,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Puts object
-  @Test func putsObjectWithAPIKeySigner() async throws {
+  @Test(.destructive) func putsObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1057,7 +1059,7 @@ struct ObjectStorageTest {
     }
   }
 
-  @Test("Puts an object into a bucket using PAR link")
+  @Test("Puts an object into a bucket using PAR link", .destructive)
   func putsObjectPARWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -1088,7 +1090,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Puts object into user specified folder
-  @Test func putsObjectIntoFolderWithAPIKeySigner() async throws {
+  @Test(.destructive) func putsObjectIntoFolderWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1120,7 +1122,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Puts object into user specified folder using MD5 hash to file integrity
-  @Test func putsObjectIntoFolderWithMD5WithAPIKeySigner() async throws {
+  @Test(.destructive) func putsObjectIntoFolderWithMD5WithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1155,7 +1157,7 @@ struct ObjectStorageTest {
 
   // MARK: - Reencrypts bucket
   ///  If you call this API and there is no kmsKeyId associated with the bucket, the call will fail.
-  @Test func reencryptsBucketWithAPIKeySigner() async throws {
+  @Test(.destructive) func reencryptsBucketWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1176,7 +1178,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Reencrypts object
-  @Test func reencryptsObjectWithAPIKeySigner() async throws {
+  @Test(.destructive) func reencryptsObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1201,7 +1203,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Renames object
-  @Test func renamesObjectWithAPIKeySigner() async throws {
+  @Test(.destructive) func renamesObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1224,7 +1226,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Restore object
-  @Test func restoreObjectWithAPIKeySigner() async throws {
+  @Test(.destructive) func restoreObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1247,7 +1249,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Updates bucket
-  @Test func updatesBucketWithMovingToCompartmentWithAPIKeySigner() async throws {
+  @Test(.destructive) func updatesBucketWithMovingToCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1280,7 +1282,7 @@ struct ObjectStorageTest {
   }
 
   // Once a bucket versioning was "Enabled" you can "Suspend" it only.
-  @Test func updatesBucketWithVersioningWithAPIKeySigner() async throws {
+  @Test(.destructive) func updatesBucketWithVersioningWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1311,7 +1313,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Updates namespace meatadata
-  @Test func updatesNamespaceMetadataWithAPIKeySigner() async throws {
+  @Test(.destructive) func updatesNamespaceMetadataWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1342,7 +1344,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Updates object storage tier
-  @Test func updatesObjectStorageTierWithAPIKeySigner() async throws {
+  @Test(.destructive) func updatesObjectStorageTierWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName
@@ -1368,7 +1370,7 @@ struct ObjectStorageTest {
   }
 
   // MARK: - Updates retention rule
-  @Test func updatesRetentionRuleWithAPIKeySigner() async throws {
+  @Test(.destructive) func updatesRetentionRuleWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
       profile: ociProfileName

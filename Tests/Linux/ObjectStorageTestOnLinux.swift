@@ -20,7 +20,6 @@ import Testing
   import FoundationNetworking
 #endif
 
-@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct ObjectStorageTestOnLinux {
   let ociConfigFilePath: String
   let ociProfileName: String
@@ -61,7 +60,7 @@ struct ObjectStorageTestOnLinux {
   }
 
   // MARK: - Puts object
-  @Test("PutObject uploads a file with special characters in its name")
+  @Test("PutObject uploads a file with special characters in its name", .destructive)
   func putsObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -171,7 +170,7 @@ struct ObjectStorageTestOnLinux {
   }
 
   // MARK: -  Deletes object
-  @Test("DeleteObject deletes the specified object with name special characters")
+  @Test("DeleteObject deletes the specified object with name special characters", .destructive)
   func deletesObjectWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,

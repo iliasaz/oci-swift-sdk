@@ -38,19 +38,29 @@ suites in `UNIT_TEST_FILTER`.
 > `DEFAULT`). Leaving any variable blank is always safe — the suites that need it
 > either self-skip or fall back to a default.
 
-## ⚠️ Destructive suites
+## ⚠️ Destructive tests
 
-Some live suites **create and delete real resources**. Only run them against a
-throwaway/test tenancy or compartment:
+Gating is **per test**, not per suite: within a suite the read-only tests run
+normally, while each test that creates, mutates or deletes a real resource is
+marked `.destructive` and skipped unless you opt in:
 
-- `ObjectStorageTest` — creates/deletes buckets and objects, PARs, replication &
-  retention rules; moves compartments; re-encrypts; updates namespace metadata.
-- `ObjectStorageTestOnLinux`, `PutObjectHeaderCasingDiagnostics` — put/delete objects.
-- `IAMTest` — bulk-deletes/moves resources; creates/deletes/moves/recovers/updates compartments.
-- `LoggingIngestionLiveTest` — writes a real log entry.
+```sh
+OCI_RUN_DESTRUCTIVE_TESTS=1 swift test --filter ObjectStorageTest
+```
 
-Read-only or non-destructive: `OCIKitTests`, `SecretsIntegrationTest`,
-`GenAITest`, `HealthEntityTest`, `MonitoringLiveTest`, `InstancePrincipalObjectStorageTest`.
+Only opt in against a throwaway/test tenancy or compartment. Destructive tests
+cover: creating/deleting buckets, objects, PARs and replication/retention rules;
+renaming/restoring/re-encrypting; changing storage tier, bucket versioning and
+namespace metadata; and — in `IAMTest` — creating, moving, deleting and
+recovering **compartments**. `PutObjectHeaderCasingDiagnostics` is destructive as
+a whole (it exists to PUT an object), so it stays gated at the suite level.
+
+A second trait, `.requiresEnv("…")`, marks read-only tests that need a specific
+per-resource identifier (PAR id/URL, object version, replication or retention
+rule id). Those change whenever the resource is recreated, so the tests self-skip
+when the variable is blank instead of failing.
+
+Both traits live in `DestructiveTestGate.swift` in each test target.
 
 ## Environment variables
 

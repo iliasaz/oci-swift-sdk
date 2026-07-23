@@ -16,7 +16,6 @@ import Foundation
 import OCIKit
 import Testing
 
-@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct IAMTest {
   let ociConfigFilePath: String
   let ociProfileName: String
@@ -34,7 +33,7 @@ struct IAMTest {
   }
 
   // MARK: - Bulk delete resource
-  @Test("Deletes all resources in the specified compartment")
+  @Test("Deletes all resources in the specified compartment", .destructive)
   func bulkDeleteResourcesWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -54,7 +53,7 @@ struct IAMTest {
   }
 
   // MARK: - Bulk move resource
-  @Test("Moves all resources in the specified compartment to another compartment")
+  @Test("Moves all resources in the specified compartment to another compartment", .destructive)
   func bulkMoveResourcesWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -78,7 +77,7 @@ struct IAMTest {
   }
 
   // MARK: - Creates compartment
-  @Test("Creates a compartment into the specified tenancy/comaprtment")
+  @Test("Creates a compartment into the specified tenancy/comaprtment", .destructive)
   func createCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -106,7 +105,7 @@ struct IAMTest {
   }
 
   // MARK: - Deletes compartment
-  @Test("Deletes the specified compartment")
+  @Test("Deletes the specified compartment", .destructive)
   func deleteCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -204,7 +203,7 @@ struct IAMTest {
   }
 
   // MARK: - Moves compartment
-  @Test("Move the compartment to a different parent compartment in the same tenancy. ")
+  @Test("Move the compartment to a different parent compartment in the same tenancy. ", .destructive)
   func moveCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -229,7 +228,7 @@ struct IAMTest {
   }
 
   // MARK: - Recovers compartment
-  @Test("Recover the compartment from deleted state. ")
+  @Test("Recover the compartment from deleted state. ", .destructive)
   func recoverCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
@@ -252,7 +251,7 @@ struct IAMTest {
   }
 
   // MARK: - Updates compartment
-  @Test("Update the name and description of the compartment.")
+  @Test("Update the name and description of the compartment.", .destructive)
   func updateCompartmentWithAPIKeySigner() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,
