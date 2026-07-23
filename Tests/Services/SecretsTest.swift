@@ -479,19 +479,30 @@ struct SecretsClientInitTests {
 
 // MARK: - Integration Tests
 
+/// Live Secrets tests. The secret/vault they read are tenancy-specific, so they
+/// come from the environment (see the test plan) and the suite self-skips when
+/// `OCI_SECRET_ID` is not set.
+@Suite(
+  .enabled(
+    if: !(ProcessInfo.processInfo.environment["OCI_SECRET_ID"] ?? "").isEmpty,
+    "Set OCI_SECRET_ID / OCI_VAULT_ID / OCI_SECRET_NAME to run the Secrets live suite."
+  ))
 struct SecretsIntegrationTest {
   let ociConfigFilePath: String
   let ociProfileName: String
 
-  // Test resources in oci-swift-sdk compartment (us-ashburn-1)
-  let testSecretId = "ocid1.vaultsecret.oc1.iad.amaaaaaabaveavaa7t5sljishzvjag2z6lsr5jv2kh7vhknnz52lxx7ljbfq"
-  let testVaultId = "ocid1.vault.oc1.iad.ejuvmgzzaac26.abuwcljtyp4t32meussf2gdgosqrrpnfzsmkz7ondkigzmwklauhdlmaia6a"
-  let testSecretName = "oci-swift-sdk-test-secret"
+  // Tenancy-specific test resources, supplied by the test plan.
+  let testSecretId: String
+  let testVaultId: String
+  let testSecretName: String
 
   init() throws {
     let env = ProcessInfo.processInfo.environment
-    ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    ociConfigFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    ociProfileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
+    testSecretId = env["OCI_SECRET_ID"] ?? ""
+    testVaultId = env["OCI_VAULT_ID"] ?? ""
+    testSecretName = env["OCI_SECRET_NAME"] ?? ""
   }
 
   // MARK: - Get Secret Bundle

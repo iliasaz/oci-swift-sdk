@@ -68,11 +68,11 @@ struct ObjectStorageHermeticTests {
   @Test("getNamespace: builds GET /n and parses the quoted-string body")
   func getNamespace() async throws {
     let recorder = RequestRecorder()
-    let client = try makeClient(status: 200, body: Data(#""frjfldcyl3la""#.utf8), recorder: recorder)
+    let client = try makeClient(status: 200, body: Data(#""examplenamespace""#.utf8), recorder: recorder)
 
     let namespace = try await client.getNamespace()
 
-    #expect(namespace == "frjfldcyl3la")  // quotes trimmed by the client
+    #expect(namespace == "examplenamespace")  // quotes trimmed by the client
     let req = await recorder.last
     #expect(req?.httpMethod == "GET")
     #expect(req?.url?.host == "objectstorage.us-ashburn-1.oraclecloud.com")
@@ -86,14 +86,14 @@ struct ObjectStorageHermeticTests {
     let recorder = RequestRecorder()
     let json = """
       [
-        {"compartmentId":"ocid1.compartment.oc1..c1","createdBy":"ocid1.user.oc1..u1","etag":"e1","name":"alpha","namespace":"frjfldcyl3la","timeCreated":"2026-07-14T12:00:00.000Z"},
-        {"compartmentId":"ocid1.compartment.oc1..c1","createdBy":"ocid1.user.oc1..u1","etag":"e2","name":"beta","namespace":"frjfldcyl3la","timeCreated":"2026-07-14T12:05:00.000Z"}
+        {"compartmentId":"ocid1.compartment.oc1..c1","createdBy":"ocid1.user.oc1..u1","etag":"e1","name":"alpha","namespace":"examplenamespace","timeCreated":"2026-07-14T12:00:00.000Z"},
+        {"compartmentId":"ocid1.compartment.oc1..c1","createdBy":"ocid1.user.oc1..u1","etag":"e2","name":"beta","namespace":"examplenamespace","timeCreated":"2026-07-14T12:05:00.000Z"}
       ]
       """
     let client = try makeClient(status: 200, body: Data(json.utf8), recorder: recorder)
 
     let buckets = try await client.listBuckets(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       compartmentId: "ocid1.compartment.oc1..c1",
       limit: 10
     )
@@ -103,7 +103,7 @@ struct ObjectStorageHermeticTests {
 
     let req = await recorder.last
     #expect(req?.httpMethod == "GET")
-    #expect(req?.url?.path == "/n/frjfldcyl3la/b")
+    #expect(req?.url?.path == "/n/examplenamespace/b")
     let items = req?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } ?? []
     let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value) })
     #expect(query["compartmentId"] == "ocid1.compartment.oc1..c1")
@@ -122,7 +122,7 @@ struct ObjectStorageHermeticTests {
     let payload = Data("Hello, OCI!".utf8)
 
     _ = try? await client.putObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "test_bucket_by_sdk",
       objectName: "greeting.txt",
       putObjectBody: payload
@@ -130,7 +130,7 @@ struct ObjectStorageHermeticTests {
 
     let req = await recorder.last
     #expect(req?.httpMethod == "PUT")
-    #expect(req?.url?.path == "/n/frjfldcyl3la/b/test_bucket_by_sdk/o/greeting.txt")
+    #expect(req?.url?.path == "/n/examplenamespace/b/test_bucket_by_sdk/o/greeting.txt")
     #expect(req?.httpBody == payload)
   }
 
@@ -166,7 +166,7 @@ struct ObjectStorageHermeticTests {
     )
 
     let data = try await client.getObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "test_bucket_by_sdk",
       objectName: "big.bin",
       range: "bytes=0-3"
@@ -175,7 +175,7 @@ struct ObjectStorageHermeticTests {
     #expect(data == partial)  // 206 accepted; only the requested window is returned
     let req = await recorder.last
     #expect(req?.httpMethod == "GET")
-    #expect(req?.url?.path == "/n/frjfldcyl3la/b/test_bucket_by_sdk/o/big.bin")
+    #expect(req?.url?.path == "/n/examplenamespace/b/test_bucket_by_sdk/o/big.bin")
     #expect(req?.value(forHTTPHeaderField: "range") == "bytes=0-3")
   }
 
@@ -187,7 +187,7 @@ struct ObjectStorageHermeticTests {
     let client = try makeClient(status: 200, body: Data("full-object".utf8), recorder: recorder)
 
     _ = try await client.getObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "test_bucket_by_sdk",
       objectName: "big.bin"
     )
@@ -204,7 +204,7 @@ struct ObjectStorageHermeticTests {
     let client = try makeClient(status: 200, body: Data("cipher".utf8), recorder: recorder)
 
     _ = try await client.getObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "test_bucket_by_sdk",
       objectName: "enc.bin",
       opcSseCustomerAlgorithm: "AES256",
@@ -232,7 +232,7 @@ struct ObjectStorageHermeticTests {
     )
     let par = URL(
       string:
-        "https://frjfldcyl3la.objectstorage.us-ashburn-1.oraclecloud.com/p/tokenEXAMPLE/n/frjfldcyl3la/b/test_bucket_by_sdk/o/"
+        "https://examplenamespace.objectstorage.us-ashburn-1.oraclecloud.com/p/tokenEXAMPLE/n/examplenamespace/b/test_bucket_by_sdk/o/"
     )!
 
     let data = try await client.getObject(parURL: par, objectName: "big.bin", range: "bytes=0-1")
@@ -252,7 +252,7 @@ struct ObjectStorageHermeticTests {
     let client = try makeClient(status: 200, body: Data(), recorder: recorder)
 
     _ = try? await client.headObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "test_bucket_by_sdk",
       objectName: "enc.bin",
       opcSseCustomerAlgorithm: "AES256",
