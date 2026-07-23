@@ -21,7 +21,7 @@
   },
   "request": {
     "method": "GET",
-    "url": "https://objectstorage.us-phoenix-1.oraclecloud.com/n/frjfldcyl3la/b/oci-swift-sdk-range-test/o/range-object.txt"
+    "url": "https://objectstorage.us-phoenix-1.oraclecloud.com/n/examplenamespace/b/oci-swift-sdk-range-test/o/range-object.txt"
   },
   "statusCode": 206
 }

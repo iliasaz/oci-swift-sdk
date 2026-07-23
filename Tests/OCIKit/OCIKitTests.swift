@@ -24,9 +24,16 @@ final class OCIKitTests: XCTestCase {
   }
 
   func test_if_namespace_returns_valid_string() async throws {
+    // The tenancy OCID is tenancy-specific: supplied by the test plan.
+    guard let tenancyId = ProcessInfo.processInfo.environment["OCI_TENANCY_ID"], !tenancyId.isEmpty else {
+      throw XCTSkip("Set OCI_TENANCY_ID to run this live test.")
+    }
     let signer = try APIKeySigner(configFilePath: ociConfigFilePath, configName: ociProfileName)
-    let objectStorage = try ObjectStorageClient(region: .fra, signer: signer)
-    let namespace = try await objectStorage.getNamespace(compartmentId: "ocid1.tenancy.oc1..aaaaaaaapt3esrvwldrfekea5ucasigr2nof7tjx6ysyb4oo3yiqgx2d72ha")
+    // Derive the region from the configured profile rather than pinning one.
+    let regionId = try extractUserRegion(from: ociConfigFilePath, profile: ociProfileName)
+    let region = Region.from(regionId: regionId ?? "") ?? .iad
+    let objectStorage = try ObjectStorageClient(region: region, signer: signer)
+    let namespace = try await objectStorage.getNamespace(compartmentId: tenancyId)
 
     XCTAssertFalse(namespace.isEmpty, "Namespace should not be empty")
   }

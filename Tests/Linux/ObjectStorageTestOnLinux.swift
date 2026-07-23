@@ -20,6 +20,7 @@ import Testing
   import FoundationNetworking
 #endif
 
+@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct ObjectStorageTestOnLinux {
   let ociConfigFilePath: String
   let ociProfileName: String
@@ -31,7 +32,7 @@ struct ObjectStorageTestOnLinux {
   }
 
   // MARK: - Gets namespace
-  @Test("GetNamespace returns with a string. e.g.:\"frjfldcyl3la\"")
+  @Test("GetNamespace returns with a string. e.g.: a short opaque namespace string")
   func getsNamespaceWithAPIKeySignerReturnsValidString() async throws {
     let regionId = try extractUserRegion(
       from: ociConfigFilePath,

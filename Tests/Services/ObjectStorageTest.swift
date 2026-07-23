@@ -18,6 +18,7 @@ import Testing
 
 @testable import OCIKit
 
+@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct ObjectStorageTest {
   // `LoggingSystem.bootstrap` is a process-wide, call-once gate. Swift Testing
   // makes a fresh suite instance per `@Test`, so bootstrapping in `init()`
@@ -451,7 +452,7 @@ struct ObjectStorageTest {
     let sut = try ObjectStorageClient(region: region, signer: signer)
 
     let namespace = try await sut.getNamespace(
-      compartmentId: "ocid1.tenancy.oc1..aaaaaaaapt3esrvwldrfekea5ucasigr2nof7tjx6ysyb4oo3yiqgx2d72ha"
+      compartmentId: "ocid1.tenancy.oc1..EXAMPLE"
     )
 
     #expect(!namespace.isEmpty, "Namespace should not be empty")
@@ -460,9 +461,9 @@ struct ObjectStorageTest {
   // MARK: - Gets namespace metadata
   /// `{
   ///   "data": {
-  ///       "default-s3-compartment-id": "ocid1.tenancy.oc1..aaaaaaaapt3esrvwldrfekea5ucasigr2nof7tjx6ysyb4oo3yiqgx2d72ha",
-  ///       "default-swift-compartment-id": "ocid1.tenancy.oc1..aaaaaaaapt3esrvwldrfekea5ucasigr2nof7tjx6ysyb4oo3yiqgx2d72ha",
-  ///       "namespace": "frjfldcyl3la"
+  ///       "default-s3-compartment-id": "ocid1.tenancy.oc1..EXAMPLE",
+  ///       "default-swift-compartment-id": "ocid1.tenancy.oc1..EXAMPLE",
+  ///       "namespace": "EXAMPLENAMESPACE"
   ///    }
   /// }`
   @Test func getsNamespaceMetadataWithAPIKeySigner() async throws {

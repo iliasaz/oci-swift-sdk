@@ -15,7 +15,7 @@
 // Hermetic tests for LoggingIngestClient — no ~/.oci/config, no credentials, no
 // network. Two shapes are used, mirroring SecretsHermeticTests.swift:
 //   • replay a committed fixture (captured once from real OCI against the
-//     `ocikit-test-log` custom log, profile `jroga`, region `us-phoenix-1`; see
+//     `ocikit-test-log` custom log, the configured OCI profile, region `us-phoenix-1`; see
 //     BRIEF.md) and assert on the client's throw/no-throw behavior — locks
 //     response handling for the 200-empty-body success path and the error path.
 //   • inject a recording HTTPClient closure and assert on the request the

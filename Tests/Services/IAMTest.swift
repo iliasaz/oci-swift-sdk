@@ -16,6 +16,7 @@ import Foundation
 import OCIKit
 import Testing
 
+@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct IAMTest {
   let ociConfigFilePath: String
   let ociProfileName: String

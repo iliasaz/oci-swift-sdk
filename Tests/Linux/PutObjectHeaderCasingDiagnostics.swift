@@ -37,6 +37,7 @@ import Testing
   import FoundationNetworking
 #endif
 
+@Suite(.enabled(if: destructiveTestsEnabled, Comment(rawValue: destructiveTestsSkipComment)))
 struct PutObjectHeaderCasingDiagnostics {
   let configPath: String
   let profile: String

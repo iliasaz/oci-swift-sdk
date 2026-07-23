@@ -1,15 +1,15 @@
 {
-  "bodyBase64" : "ImZyamZsZGN5bDNsYSI=",
-  "headers" : {
-    "Content-Length" : "14",
-    "Content-Type" : "application\/json",
-    "Date" : "Wed, 15 Jul 2026 07:20:19 GMT",
-    "Server" : "BaseHTTP\/0.6 Python\/3.13.13",
-    "opc-request-id" : "iad-1\/CAPTURE00000EXAMPLE\/BLOCK00000EXAMPLE"
+  "bodyBase64": "ImV4YW1wbGVuYW1lc3BhY2Ui",
+  "headers": {
+    "Content-Length": "18",
+    "Content-Type": "application/json",
+    "Date": "Wed, 15 Jul 2026 07:20:19 GMT",
+    "Server": "BaseHTTP/0.6 Python/3.13.13",
+    "opc-request-id": "iad-1/CAPTURE00000EXAMPLE/BLOCK00000EXAMPLE"
   },
-  "request" : {
-    "method" : "GET",
-    "url" : "http:\/\/127.0.0.1:8099\/n"
+  "request": {
+    "method": "GET",
+    "url": "http://127.0.0.1:8099/n"
   },
-  "statusCode" : 200
+  "statusCode": 200
 }
