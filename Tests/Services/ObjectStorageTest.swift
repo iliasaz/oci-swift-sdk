@@ -62,8 +62,8 @@ struct ObjectStorageTest {
   init() throws {
     _ = Self.bootstrapLogging
     let env = ProcessInfo.processInfo.environment
-    ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    ociConfigFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    ociProfileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     testNamespace = env["OCI_NAMESPACE"] ?? ""
     testNamespace2 = env["OCI_OS_NAMESPACE_2"] ?? ""
     testBucket = env["OCI_BUCKET"] ?? ""

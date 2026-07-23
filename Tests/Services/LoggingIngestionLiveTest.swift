@@ -37,8 +37,8 @@ struct LoggingIngestionLiveTest {
       return
     }
 
-    let configFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    let profileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    let configFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    let profileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
 
     let signer = try APIKeySigner(configFilePath: configFilePath, configName: profileName)
     let regionId = try extractUserRegion(from: configFilePath, profile: profileName)

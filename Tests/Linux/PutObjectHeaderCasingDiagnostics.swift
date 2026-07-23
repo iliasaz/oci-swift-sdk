@@ -45,8 +45,8 @@ struct PutObjectHeaderCasingDiagnostics {
 
   init() {
     let env = ProcessInfo.processInfo.environment
-    configPath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    profile = env["OCI_PROFILE"] ?? "DEFAULT"
+    configPath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    profile = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     bucketName = env["OCI_TEST_BUCKET"] ?? "myTestBucket"
   }
 

@@ -30,8 +30,8 @@ struct MonitoringLiveTest {
       logger.info("MonitoringLiveTest skipped — set MONITORING_COMPARTMENT_OCID to run")
       return
     }
-    let configFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    let profile = env["OCI_PROFILE"] ?? "DEFAULT"
+    let configFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    let profile = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     let namespace = env["MONITORING_NAMESPACE"] ?? "ocikit_probe"
 
     // Post to the region the credentials belong to, otherwise the datapoint

@@ -32,8 +32,8 @@ struct ObjectStorageTestOnLinux {
 
   init() throws {
     let env = ProcessInfo.processInfo.environment
-    ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    ociConfigFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    ociProfileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     testNamespace = env["OCI_NAMESPACE"] ?? ""
     testBucket = env["OCI_BUCKET"] ?? ""
     testCompartmentId = env["OCI_COMPARTMENT_ID"] ?? ""

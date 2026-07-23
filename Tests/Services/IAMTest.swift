@@ -27,8 +27,8 @@ struct IAMTest {
 
   init() throws {
     let env = ProcessInfo.processInfo.environment
-    ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    ociConfigFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    ociProfileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     testCompartment = env["OCI_IAM_TEST_COMPARTMENT_ID"] ?? ""
     targetParentCompartmentId = env["OCI_COMPARTMENT_ID"] ?? ""
   }

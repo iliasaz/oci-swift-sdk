@@ -15,8 +15,8 @@ import XCTest
 #endif
 
 final class OCIKitTests: XCTestCase {
-  let ociConfigFilePath = ProcessInfo.processInfo.environment["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-  let ociProfileName = ProcessInfo.processInfo.environment["OCI_PROFILE"] ?? "DEFAULT"
+  let ociConfigFilePath = ProcessInfo.processInfo.environment["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+  let ociProfileName = ProcessInfo.processInfo.environment["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
 
   func test_if_config_file_exists() {
     let fileExists = FileManager.default.fileExists(atPath: ociConfigFilePath)

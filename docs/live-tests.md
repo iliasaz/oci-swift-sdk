@@ -29,6 +29,15 @@ suites in `UNIT_TEST_FILTER`.
 `.swiftpm/` is gitignored, so your filled-in plan stays local. Only the
 `*.template` file (with placeholder values) is committed.
 
+> **Gotcha: test plans do not expand `$(VAR)`.** Build-setting style substitutions
+> such as `$(HOME)` or `$(SRCROOT)` are **not** interpolated in a test plan's
+> environment-variable *values* — the literal string is passed to the process. So
+> `OCI_CONFIG_FILE=$(HOME)/.oci/config` yields a path that does not exist and every
+> signer fails with `missingConfig`. Use an **absolute path**, or leave the entry
+> blank: blank/unset values fall back to `~/.oci/config` (and `OCI_PROFILE` to
+> `DEFAULT`). Leaving any variable blank is always safe — the suites that need it
+> either self-skip or fall back to a default.
+
 ## ⚠️ Destructive suites
 
 Some live suites **create and delete real resources**. Only run them against a

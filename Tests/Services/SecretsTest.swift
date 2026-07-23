@@ -498,8 +498,8 @@ struct SecretsIntegrationTest {
 
   init() throws {
     let env = ProcessInfo.processInfo.environment
-    ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    ociConfigFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    ociProfileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     testSecretId = env["OCI_SECRET_ID"] ?? ""
     testVaultId = env["OCI_VAULT_ID"] ?? ""
     testSecretName = env["OCI_SECRET_NAME"] ?? ""
