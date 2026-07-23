@@ -19,11 +19,20 @@ import Testing
 @testable import OCIKit
 
 struct ObjectStorageTest {
+  // `LoggingSystem.bootstrap` is a process-wide, call-once gate. Swift Testing
+  // makes a fresh suite instance per `@Test`, so bootstrapping in `init()`
+  // directly trips the precondition on the second test. A `static let` runs the
+  // bootstrap exactly once per process (thread-safe), so re-running `init()` is
+  // safe.
+  private static let bootstrapLogging: Void = {
+    LoggingSystem.bootstrap(StreamLogHandler.standardOutput)
+  }()
+
   let ociConfigFilePath: String
   let ociProfileName: String
 
   init() throws {
-    LoggingSystem.bootstrap(StreamLogHandler.standardOutput)
+    _ = Self.bootstrapLogging
     let env = ProcessInfo.processInfo.environment
     ociConfigFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
     ociProfileName = env["OCI_PROFILE"] ?? "DEFAULT"
@@ -1274,7 +1283,9 @@ struct ObjectStorageTest {
 
     // Prints metadata
     if let updateNamespaceMetadata {
-      logger.info("default-swift-compartment-id: \(updateNamespaceMetadata.defaultSwiftCompartmentId), \ndefault-s3-compartment-id: \(updateNamespaceMetadata.defaultS3CompartmentId), \nnamespace: \(updateNamespaceMetadata.namespace)")
+      logger.info(
+        "default-swift-compartment-id: \(updateNamespaceMetadata.defaultSwiftCompartmentId), \ndefault-s3-compartment-id: \(updateNamespaceMetadata.defaultS3CompartmentId), \nnamespace: \(updateNamespaceMetadata.namespace)"
+      )
     }
     #expect(updateNamespaceMetadata != nil, "The operation should succeed")
   }
