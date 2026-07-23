@@ -40,7 +40,7 @@ service name throughout (e.g. `Secrets`, `IAM`).
   `endpoint` from either an explicit `endpoint:` string or `region` + `Service
   .<service>.getHost(in:)`, throwing `<Service>Error.missingRequiredParameter` if
   neither is given. One public `async` method per operation, each following: build
-  the `<Service>API` case → `buildRequest(api:endpoint:)` → `signer.sign(&req)` →
+  the `<Service>API` case → `buildRequest(api:endpoint:)` → `try await signer.sign(&req)` →
   `try await httpClient.data(req)` → guard the status code, throwing `<Service>Error
   .unexpectedStatusCode` on mismatch → `JSONDecoder().decode(...)`. Route **every**
   send site through `httpClient.data(req)`, never `URLSession.shared.data(for:)`

@@ -346,7 +346,7 @@ public struct ContainerInstancesClient: Sendable {
     )
     // Logs are returned as text, not JSON.
     req.setValue("application/json, text/plain", forHTTPHeaderField: "accept")
-    try signer.sign(&req)
+    try await signer.sign(&req)
 
     let (data, response) = try await URLSession.shared.data(for: req)
     guard let http = response as? HTTPURLResponse else {

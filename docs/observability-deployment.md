@@ -52,11 +52,11 @@ Two facts drive most of the recipes below:
 
 | Runtime | Signer | Construction |
 |---|---|---|
-| Compute VM (any shape, incl. Always Free) | `InstancePrincipalSigner` | `try InstancePrincipalSigner()` |
+| Compute VM (any shape, incl. Always Free) | `InstancePrincipalSigner` | `try await InstancePrincipalSigner.fromMetadata()` |
 | OKE, enhanced cluster (workload identity) | `OKEWorkloadIdentitySigner` | `try await OKEWorkloadIdentitySigner.fromWorkloadIdentity()` — opt-in `OCIKitWorkloadIdentity` product, pins the cluster CA in-process |
-| OKE, node-level fallback | `InstancePrincipalSigner` | `try InstancePrincipalSigner()` — same as a bare VM; every node is itself a Compute instance |
-| Container Instances | `ResourcePrincipalSigner` | `try ResourcePrincipalSigner.fromEnvironment()` |
-| Functions | `ResourcePrincipalSigner` | `try ResourcePrincipalSigner.fromEnvironment()` |
+| OKE, node-level fallback | `InstancePrincipalSigner` | `try await InstancePrincipalSigner.fromMetadata()` — same as a bare VM; every node is itself a Compute instance |
+| Container Instances | `ResourcePrincipalSigner` | `try await ResourcePrincipalSigner.fromEnvironment()` |
+| Functions | `ResourcePrincipalSigner` | `try await ResourcePrincipalSigner.fromEnvironment()` |
 | Local dev / CI | `APIKeySigner` | `try APIKeySigner(configFilePath: "\(NSHomeDirectory())/.oci/config")` — the path is **not** tilde-expanded, so `"~/.oci/config"` will not resolve |
 
 ```swift
@@ -64,12 +64,12 @@ import Foundation   // NSHomeDirectory()
 import OCIKit
 
 // Compute VM — instance principal.
-let signer = try InstancePrincipalSigner()
+let signer = try await InstancePrincipalSigner.fromMetadata()
 
 // Container Instances or Functions — resource principal v2.2. The hosting
 // service injects the RPST + private key into the environment; nothing else
 // to configure.
-let signer = try ResourcePrincipalSigner.fromEnvironment()
+let signer = try await ResourcePrincipalSigner.fromEnvironment()
 
 // Local dev / CI — reads ~/.oci/config. Pass an absolute path: the config path
 // is handed to the INI parser verbatim, so a literal "~/..." is NOT expanded and
@@ -218,7 +218,7 @@ secret, and have the workload read it under its own injected principal — the s
 ```swift
 import OCIKit
 
-let signer = try InstancePrincipalSigner()   // or ResourcePrincipalSigner / OKEWorkloadIdentitySigner
+let signer = try await InstancePrincipalSigner.fromMetadata()   // or ResourcePrincipalSigner / OKEWorkloadIdentitySigner
 let client = try SecretsClient(region: .phx, signer: signer)
 
 let bundle = try await client.getSecretBundle(secretId: "ocid1.vaultsecret.oc1.phx.EXAMPLE")

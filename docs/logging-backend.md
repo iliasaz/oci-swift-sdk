@@ -52,7 +52,7 @@ handler it creates shares this one batcher.
 import Logging
 import OCIKit
 
-let signer = try InstancePrincipalSigner()   // or any other signer — see the deployment guide
+let signer = try await InstancePrincipalSigner.fromMetadata()   // or any other signer — see the deployment guide
 
 let batcher = try OCILogBatcher(
   configuration: OCILogHandlerConfiguration(

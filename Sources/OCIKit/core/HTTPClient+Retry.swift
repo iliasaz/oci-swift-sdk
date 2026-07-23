@@ -58,7 +58,7 @@ extension HTTPClient {
     while true {
       var req = request
       if let signer {
-        try signer.sign(&req)
+        try await signer.sign(&req)
       }
 
       let data: Data
@@ -90,7 +90,7 @@ extension HTTPClient {
       if http.statusCode == 401, !refreshedAfter401, let refreshable = signer as? RefreshableSigner {
         refreshedAfter401 = true
         logger.debug("Received 401 on attempt \(attempt); forcing signer refresh and retrying once")
-        try refreshable.forceRefresh()
+        try await refreshable.forceRefresh()
         continue
       }
 
