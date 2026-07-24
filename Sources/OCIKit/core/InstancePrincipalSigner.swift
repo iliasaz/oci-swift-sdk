@@ -47,7 +47,7 @@
 //   - ``refresh()`` performs the federation exchange; concurrent callers coalesce
 //     onto a single in-flight exchange (single-flight), so a burst of requests
 //     arriving after a token expiry federates once, not N times.
-//   - ``fromMetadata(federationEndpointOverride:purpose:transport:logger:_:)``
+//   - ``fromMetadata(federationEndpointOverride:purpose:transport:logger:environment:)``
 //     builds the signer and performs the first exchange eagerly, so it fails fast
 //     off an OCI instance instead of at first request.
 //
@@ -55,6 +55,7 @@
 import Crypto
 import Foundation
 import Logging
+import RegexBuilder
 import _CryptoExtras
 
 #if canImport(FoundationNetworking)
@@ -72,6 +73,11 @@ public enum InstancePrincipalError: Error, LocalizedError, Equatable {
   case regionUnavailable
   /// The federation endpoint string (override or realm-derived) is not a valid URL.
   case invalidFederationEndpoint(String)
+  /// A region or realm value read from IMDS is not a plausible DNS name, so it was
+  /// refused instead of being interpolated into the federation host.
+  case invalidRegionMetadata(field: String, value: String)
+  /// The leaf certificate read from IMDS could not be decoded as PEM.
+  case invalidCertificate(String)
   /// The leaf private key read from IMDS could not be parsed as an RSA PEM key.
   case invalidPrivateKey
   /// The tenancy OCID could not be derived from the leaf certificate or IMDS.
@@ -84,8 +90,14 @@ public enum InstancePrincipalError: Error, LocalizedError, Equatable {
   case federationFailed(status: Int, message: String)
   /// The federation response could not be decoded into a security token.
   case malformedFederationResponse(String)
-  /// The signer has no cached token yet — should not occur because ``sign(_:)``
-  /// refreshes inline; retained as a defensive guard.
+  /// The signer has no cached token yet. Provably unreachable in the current
+  /// implementation: the private `credentials()` accessor that ``sign(_:)``
+  /// calls always refreshes inline via ``refreshIfNeeded()`` before reading the
+  /// cache, and ``performRefresh()`` assigns the token and session key together
+  /// in one non-suspending step — so a non-throwing refresh always leaves both
+  /// set. Retained as a defensive guard rather than a force-unwrap, so a future
+  /// refactor that decouples those two invariants fails with a thrown error
+  /// instead of a crash.
   case notPrimed
 
   private static let usageHint =
@@ -100,6 +112,12 @@ public enum InstancePrincipalError: Error, LocalizedError, Equatable {
       return "The instance region could not be determined from IMDS. \(Self.usageHint)"
     case .invalidFederationEndpoint(let endpoint):
       return "The Auth Service federation endpoint is not a valid URL: \(endpoint)"
+    case .invalidRegionMetadata(let field, let value):
+      return
+        "IMDS returned a \(field) that is not a valid DNS name component: \"\(value)\". "
+        + "Refusing to build the Auth Service federation endpoint from it."
+    case .invalidCertificate(let detail):
+      return "The instance leaf certificate read from IMDS could not be decoded: \(detail)."
     case .invalidPrivateKey:
       return "The instance leaf private key from IMDS is not a valid RSA PEM key."
     case .tenancyNotFound:
@@ -185,10 +203,21 @@ public actor InstancePrincipalSigner: RefreshableSigner {
   private let transport: HTTPClient
   private let logger: Logger
 
-  /// Seconds before `exp` used as the refresh threshold when the token carries no
-  /// `iat` claim (so a half-life cannot be computed).
-  private static let fallbackJitterSeconds = 60
   static let metadataAuthHeader = "Bearer Oracle"
+
+  /// Timeout for IMDS reads. IMDS is a link-local service on the same host, so a
+  /// slow response means it is effectively not there.
+  static let metadataTimeoutSeconds: TimeInterval = 10
+  /// Timeout for the *best-effort* region discovery performed when the caller has
+  /// already pinned the federation endpoint. Deliberately shorter than
+  /// ``metadataTimeoutSeconds``: that value is optional, and supplying an override
+  /// is a strong hint the process is not on an OCI instance — where each IMDS read
+  /// would otherwise stall for the full timeout before failing.
+  static let bestEffortMetadataTimeoutSeconds: TimeInterval = 2
+  /// Timeout for the Auth Service federation POST. Set explicitly rather than
+  /// inheriting `URLRequest`'s 60s default, because this request sits inside the
+  /// `401` retry path where a long stall is paid by an in-flight service call.
+  static let federationTimeoutSeconds: TimeInterval = 30
 
   // Actor-isolated cache. The leaf certificate material lives in IMDS and is
   // re-read on every refresh, so only the derived/negotiated values are cached.
@@ -197,8 +226,11 @@ public actor InstancePrincipalSigner: RefreshableSigner {
   private var tenancyId: String?
   private var issuedAt: Int?
   private var expiry: Int?
-  /// The in-flight refresh, if any; used to coalesce concurrent refreshes.
-  private var inFlight: Task<Void, Error>?
+  /// When the cached token was obtained; the staleness bound for a token that
+  /// carries no readable `exp` claim.
+  private var obtainedAt: Int?
+  /// Bookkeeping for the single-flight exchange; see ``SingleFlightExchange``.
+  private var exchange = SingleFlightExchange()
 
   // MARK: Designated init
 
@@ -233,6 +265,12 @@ public actor InstancePrincipalSigner: RefreshableSigner {
   ///     instance-principal flow.
   ///   - transport: The HTTP transport used for IMDS and federation calls.
   ///     Defaults to ``HTTPClient/live`` (`URLSession`); injectable for testing.
+  ///   - discoverRegion: Whether to discover the region/realm from IMDS purely to
+  ///     populate the public ``region`` / ``realmDomainComponent`` accessors when
+  ///     `federationEndpointOverride` is supplied. Costs up to two IMDS reads —
+  ///     which off an OCI instance means two timeouts — so pass `false` when the
+  ///     override is being used precisely because there is no IMDS to reach.
+  ///     Ignored when no override is given, since discovery is required there.
   ///   - logger: Logger for diagnostics.
   ///   - environment: The environment to read (`OCI_METADATA_BASE_URL`), defaults
   ///     to the process environment. Injectable for testing.
@@ -242,13 +280,15 @@ public actor InstancePrincipalSigner: RefreshableSigner {
     federationEndpointOverride: String? = nil,
     purpose: String? = nil,
     transport: HTTPClient = .live,
+    discoverRegion: Bool = true,
     logger: Logger = Logger(label: "InstancePrincipalSigner"),
-    _ environment: [String: String] = ProcessInfo.processInfo.environment
+    environment: [String: String] = ProcessInfo.processInfo.environment
   ) async throws -> InstancePrincipalSigner {
     let signer = try await make(
       federationEndpointOverride: federationEndpointOverride,
       purpose: purpose,
       transport: transport,
+      discoverRegion: discoverRegion,
       logger: logger,
       environment: environment
     )
@@ -266,6 +306,7 @@ public actor InstancePrincipalSigner: RefreshableSigner {
     federationEndpointOverride: String?,
     purpose: String?,
     transport: HTTPClient,
+    discoverRegion: Bool = true,
     logger: Logger = Logger(label: "InstancePrincipalSigner"),
     environment: [String: String] = ProcessInfo.processInfo.environment
   ) async throws -> InstancePrincipalSigner {
@@ -282,16 +323,33 @@ public actor InstancePrincipalSigner: RefreshableSigner {
         throw InstancePrincipalError.invalidFederationEndpoint(override)
       }
       endpoint = url
-      // Best-effort region discovery for the public `region` accessor; the
-      // override already pins the endpoint, so a discovery failure is tolerable.
-      let discovered = try? await discoverRegionAndRealm(metadata: metadata, transport: transport, logger: logger)
-      region = discovered?.region
-      realm = discovered?.realm
+      // Best-effort region discovery, purely to populate the public `region` /
+      // `realmDomainComponent` accessors — the override already pins the endpoint,
+      // so a failure here is tolerable. It costs up to two IMDS reads, which off an
+      // OCI instance means two full timeouts, so it uses the shorter best-effort
+      // timeout and can be skipped outright with `discoverRegion: false`.
+      if discoverRegion {
+        let discovered = try? await discoverRegionAndRealm(
+          metadata: metadata,
+          transport: transport,
+          timeout: bestEffortMetadataTimeoutSeconds,
+          logger: logger
+        )
+        region = discovered?.region
+        realm = discovered?.realm
+      }
+      else {
+        region = nil
+        realm = nil
+      }
     }
     else {
       let discovered = try await discoverRegionAndRealm(metadata: metadata, transport: transport, logger: logger)
       region = discovered.region
       realm = discovered.realm
+      // Both components were checked against `isValidHostComponent(_:)` inside
+      // discovery, so neither can carry `@`, `/`, `:`, `#` or `?` and re-point
+      // this host — see the note there for why that matters.
       let composed = "https://auth.\(discovered.region).\(discovered.realm)/v1/x509"
       guard let url = URL(string: composed) else {
         throw InstancePrincipalError.invalidFederationEndpoint(composed)
@@ -324,10 +382,34 @@ public actor InstancePrincipalSigner: RefreshableSigner {
 
   // MARK: Signer
 
-  public func sign(_ req: inout URLRequest) async throws {
+  /// Signs `req` with the cached security token, refreshing inline when the cache
+  /// is empty or past its half-life.
+  ///
+  /// Deliberately `nonisolated`, so that only the credential snapshot is
+  /// actor-isolated and the signing work — an RSA signature plus, for
+  /// `post`/`put`/`patch`, a SHA-256 over the entire request body — provably
+  /// stays off this actor's executor. A multi-MB `putObject` therefore never
+  /// serializes other requests sharing the signer.
+  ///
+  /// Today an isolated `sign` would behave the same, because
+  /// ``SecurityTokenSigner/sign(_:)`` is a `nonisolated async` function and
+  /// SE-0338 runs those on the generic executor rather than the caller's actor.
+  /// That guarantee inverts under SE-0461 (`NonisolatedNonsendingByDefault`,
+  /// the Swift 7 default), where a `nonisolated async` callee inherits the
+  /// caller's isolation — an isolated `sign` would then hash bodies on the
+  /// actor. Splitting the snapshot out keeps the property under both rules.
+  public nonisolated func sign(_ req: inout URLRequest) async throws {
+    let (token, sessionKey) = try await credentials()
+    try await SecurityTokenSigner(securityToken: token, privateKey: sessionKey).sign(&req)
+  }
+
+  /// Returns a currently-valid token + session-key pair, refreshing inline when
+  /// the cache is empty or past its half-life. Isolated, so the two values are
+  /// snapshotted together and always belong to the same exchange.
+  private func credentials() async throws -> (String, _RSA.Signing.PrivateKey) {
     try await refreshIfNeeded()
     guard let token, let sessionKey else { throw InstancePrincipalError.notPrimed }
-    try await SecurityTokenSigner(securityToken: token, privateKey: sessionKey).sign(&req)
+    return (token, sessionKey)
   }
 
   // MARK: Refresh
@@ -338,7 +420,30 @@ public actor InstancePrincipalSigner: RefreshableSigner {
   /// recovered token.
   public func forceRefresh() async throws {
     expiry = 0  // invalidate any concurrently-observed cached token
-    try await refresh()
+    // Deliberately refuses to join an exchange that began *before* this call. Such
+    // an exchange read its credential material before the `401`, so it can only
+    // hand back what the service just rejected — and the retry, which gets only
+    // one shot, would re-sign with it and fail again. Concurrent `forceRefresh()`
+    // calls still coalesce onto one post-`401` exchange, so a certificate rotation
+    // that rejects N in-flight requests triggers one exchange, not N.
+    let startedBefore = exchange.started
+    while true {
+      // Joinable when the running exchange read its material after a `401` (it is
+      // itself forced, i.e. part of this same rejection wave) or simply began
+      // after this call. Either way its result cannot be the rejected credentials.
+      if let running = exchange.running, exchange.kind == .forced || exchange.started > startedBefore {
+        try await running.value
+        return
+      }
+      // A routine exchange that predates this call: wait it out so two exchanges
+      // never overlap, but discard its result rather than adopting it.
+      if let running = exchange.running {
+        _ = try? await running.value
+        continue
+      }
+      try await startExchange(kind: .forced)
+      return
+    }
   }
 
   /// Refreshes the token only if the cache is empty or past its half-life.
@@ -352,17 +457,28 @@ public actor InstancePrincipalSigner: RefreshableSigner {
   /// token + ephemeral session key. Concurrent callers coalesce onto one
   /// exchange.
   public func refresh() async throws {
-    if let existing = inFlight {
-      try await existing.value
+    if let running = exchange.running {
+      try await running.value
       return
     }
+    try await startExchange(kind: .routine)
+  }
+
+  /// Starts a new exchange and awaits it. The caller must have established that
+  /// nothing acceptable is already in flight.
+  private func startExchange(kind: SingleFlightExchange.Kind) async throws {
     let task = Task { try await self.performRefresh() }
-    inFlight = task
-    defer { inFlight = nil }
+    exchange.begin(task, kind: kind)
     try await task.value
   }
 
   private func performRefresh() async throws {
+    // Marks the exchange finished on both success and failure. Runs as this
+    // actor-isolated body returns — strictly before any `await task.value`
+    // awaiter is resumed — so a caller waiting an exchange out always observes it
+    // as finished when it wakes, and cannot spin.
+    defer { exchange.finish() }
+
     // 1. Re-read the leaf certificate, private key, and intermediate from IMDS on
     //    every refresh, so a rotated instance certificate is picked up.
     let leafCertPEM = try await Self.fetchText(metadata.leafCertificate, transport: transport)
@@ -382,7 +498,13 @@ public actor InstancePrincipalSigner: RefreshableSigner {
 
     // 3. Fresh ephemeral RSA-2048 session keypair on every refresh (matches
     //    Python); the returned token is bound to this key's public half.
-    guard let newSessionKey = try? _RSA.Signing.PrivateKey(keySize: .bits2048) else {
+    //
+    //    Generated off this actor — see ``makeSessionKey()``.
+    let newSessionKey: _RSA.Signing.PrivateKey
+    do {
+      newSessionKey = try await makeSessionKey()
+    }
+    catch {
       throw InstancePrincipalError.keyGenerationFailed
     }
 
@@ -424,13 +546,33 @@ public actor InstancePrincipalSigner: RefreshableSigner {
       throw InstancePrincipalError.malformedFederationResponse(body)
     }
 
-    let claims = InstancePrincipalToken.issuedAndExpiry(of: newToken)
+    let claims = TokenClaims.issuedAndExpiry(of: newToken)
     token = newToken
     sessionKey = newSessionKey
     tenancyId = derivedTenancy
     issuedAt = claims.issuedAt
     expiry = claims.expiry
+    obtainedAt = Int(Date().timeIntervalSince1970)
     logger.debug("Instance principal: obtained security token (exp=\(claims.expiry.map(String.init) ?? "nil"))")
+  }
+
+  /// Generates the ephemeral RSA-2048 session keypair.
+  ///
+  /// Marked `@concurrent` so this runs on the concurrent executor rather than the
+  /// signer's actor. RSA-2048 key generation is a synchronous CPU burst (measured
+  /// 45-220ms here) with no suspension point, so generating it inline would hold
+  /// the actor for that whole window and stall every concurrent ``sign(_:)`` on
+  /// its credential snapshot — and it now runs on every refresh, not once at init.
+  ///
+  /// `@concurrent` rather than a detached task, so the work stays structured:
+  /// cancellation, priority and task-locals all propagate from the refresh that
+  /// requested it. And `@concurrent` rather than a bare `nonisolated async`
+  /// function, because the latter only runs off-actor under SE-0338 — under
+  /// SE-0461 (`NonisolatedNonsendingByDefault`) it would inherit the caller's
+  /// isolation and land straight back on the actor.
+  @concurrent
+  private nonisolated func makeSessionKey() async throws -> _RSA.Signing.PrivateKey {
+    try _RSA.Signing.PrivateKey(keySize: .bits2048)
   }
 
   /// Derives the tenancy OCID from the leaf certificate, falling back to the IMDS
@@ -439,8 +581,13 @@ public actor InstancePrincipalSigner: RefreshableSigner {
     if let tenancyId = try? Self.tenancyId(fromCertificatePEM: pem) {
       return tenancyId
     }
+    // Trimmed before the emptiness check, matching every sibling reader of IMDS
+    // text (`metadataBaseURL` and both `regionInfo` values). Without it a
+    // whitespace-only `tenantId` is accepted as the tenancy OCID and spliced into
+    // the federation `keyId` as `"   /fed-x509/<fingerprint>"`, and the leaf
+    // certificate is POSTed to the Auth Service under it.
     if let json = try? await Self.fetchJSON(metadata.instance, transport: transport),
-      let tenancyId = json["tenantId"] as? String,
+      let tenancyId = (json["tenantId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
       !tenancyId.isEmpty
     {
       return tenancyId
@@ -450,34 +597,76 @@ public actor InstancePrincipalSigner: RefreshableSigner {
 
   /// Whether the cached token is present and still within its half-life.
   private func isValid(now: Int) -> Bool {
-    guard token != nil, sessionKey != nil else { return false }
-    guard let exp = expiry else { return true }  // no exp to evaluate: keep it
-    let threshold: Int
-    if let iat = issuedAt, exp > iat {
-      threshold = exp - (exp - iat) / 2  // midpoint of the validity window
-    }
-    else {
-      threshold = exp - Self.fallbackJitterSeconds
-    }
-    return now < threshold
+    guard token != nil, sessionKey != nil, let obtainedAt else { return false }
+    return TokenRefreshPolicy.isFreshAtHalfLife(
+      issuedAt: issuedAt,
+      expiry: expiry,
+      obtainedAt: obtainedAt,
+      now: now
+    )
   }
 }
 
 // MARK: - IMDS + federation wire helpers
 
 extension InstancePrincipalSigner {
+  /// Whether `component` is safe to splice into the federation host.
+  ///
+  /// The region and realm are interpolated into
+  /// `https://auth.<region>.<realm>/v1/x509`, and the request sent there carries
+  /// the instance leaf certificate signed with the **leaf private key**. A value
+  /// containing a URL-significant character silently re-points that request:
+  /// `URL(string:)` parses `https://auth.phx.oraclecloud.com@evil.com/v1/x509`
+  /// with host `evil.com` (verified identical on macOS Foundation and
+  /// swift-corelibs-foundation), and `/`, `#`, `?` truncate the host similarly.
+  /// Lower-casing does not prevent any of that, so the components are checked
+  /// against a plain DNS-label shape before use.
+  ///
+  /// The rule (RFC 1123 shape, deliberately not a full RFC 1035 validator):
+  ///
+  /// * ASCII `[a-z0-9.-]` only. Callers lower-case first, so `US-PHOENIX-1` is
+  ///   accepted and normalised while non-ASCII (e.g. Cyrillic homoglyphs) is not.
+  /// * Every dot-separated label is non-empty — which rejects `""`, a leading or
+  ///   trailing `.`, and consecutive dots, all of which would otherwise produce an
+  ///   empty label in the composed host.
+  /// * No label starts or ends with `-`.
+  /// * Each label is at most 63 characters and the whole component at most 253.
+  static func isValidHostComponent(_ component: String) -> Bool {
+    guard !component.isEmpty, component.count <= 253 else { return false }
+    for label in component.split(separator: ".", omittingEmptySubsequences: false) {
+      guard !label.isEmpty, label.count <= 63 else { return false }
+      guard label.first != "-", label.last != "-" else { return false }
+      guard label.allSatisfy(isHostLabelCharacter) else { return false }
+    }
+    return true
+  }
+
+  /// Whether `character` may appear in a host label: ASCII `[a-z0-9-]`.
+  private static func isHostLabelCharacter(_ character: Character) -> Bool {
+    guard character.isASCII else { return false }
+    return character.isNumber || (character.isLetter && character.isLowercase) || character == "-"
+  }
+
   /// Discovers the instance's region id (long form) and realm domain component.
   ///
   /// Prefers IMDS `regionInfo` (which carries `realmDomainComponent`, so
   /// non-commercial realms work); falls back to the short `region` code mapped
   /// through the ``Region`` enum with the commercial realm when `regionInfo` is
   /// unavailable (older IMDS).
+  ///
+  /// Both components are validated with ``isValidHostComponent(_:)`` before being
+  /// returned, because the caller splices them into the federation host. A *missing
+  /// or empty* value keeps its existing meaning — "this IMDS document is
+  /// incomplete", so discovery falls through to the older-IMDS path — but a
+  /// present-and-malformed value throws ``InstancePrincipalError/invalidRegionMetadata(field:value:)``
+  /// rather than quietly taking a different discovery path.
   static func discoverRegionAndRealm(
     metadata: InstanceMetadataURLs,
     transport: HTTPClient,
+    timeout: TimeInterval = metadataTimeoutSeconds,
     logger: Logger
   ) async throws -> (region: String, realm: String) {
-    if let info = try? await fetchJSON(metadata.regionInfo, transport: transport),
+    if let info = try? await fetchJSON(metadata.regionInfo, transport: transport, timeout: timeout),
       let regionId = (info["regionIdentifier"] as? String)?
         .trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
       !regionId.isEmpty,
@@ -485,13 +674,22 @@ extension InstancePrincipalSigner {
         .trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
       !realm.isEmpty
     {
+      guard isValidHostComponent(regionId) else {
+        throw InstancePrincipalError.invalidRegionMetadata(field: "regionIdentifier", value: regionId)
+      }
+      guard isValidHostComponent(realm) else {
+        throw InstancePrincipalError.invalidRegionMetadata(field: "realmDomainComponent", value: realm)
+      }
       return (regionId, realm)
     }
 
     // Fallback: older IMDS without `regionInfo` — short region code, commercial realm.
-    let short = try await fetchText(metadata.region, transport: transport).lowercased()
+    let short = try await fetchText(metadata.region, transport: transport, timeout: timeout).lowercased()
     guard !short.isEmpty else { throw InstancePrincipalError.regionUnavailable }
     let regionId = Region(rawValue: short)?.urlPart ?? short
+    guard isValidHostComponent(regionId) else {
+      throw InstancePrincipalError.invalidRegionMetadata(field: "region", value: regionId)
+    }
     logger.debug("IMDS regionInfo unavailable; using region=\(regionId) with commercial realm oraclecloud.com")
     return (regionId, "oraclecloud.com")
   }
@@ -524,6 +722,7 @@ extension InstancePrincipalSigner {
     var req = URLRequest(url: endpoint)
     req.httpMethod = "POST"
     req.httpBody = body
+    req.timeoutInterval = federationTimeoutSeconds
     req.setValue("application/json", forHTTPHeaderField: "content-type")
     req.setValue("application/json", forHTTPHeaderField: "accept")
 
@@ -533,11 +732,15 @@ extension InstancePrincipalSigner {
   }
 
   /// GETs an IMDS text endpoint with the `Bearer Oracle` header.
-  static func fetchText(_ url: URL, transport: HTTPClient) async throws -> String {
+  static func fetchText(
+    _ url: URL,
+    transport: HTTPClient,
+    timeout: TimeInterval = metadataTimeoutSeconds
+  ) async throws -> String {
     var req = URLRequest(url: url)
     req.httpMethod = "GET"
     req.setValue(metadataAuthHeader, forHTTPHeaderField: "Authorization")
-    req.timeoutInterval = 10
+    req.timeoutInterval = timeout
     let (data, resp) = try await transport.data(req)
     guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
       throw InstancePrincipalError.metadataUnavailable(url.path)
@@ -546,12 +749,16 @@ extension InstancePrincipalSigner {
   }
 
   /// GETs an IMDS JSON endpoint with the `Bearer Oracle` header.
-  static func fetchJSON(_ url: URL, transport: HTTPClient) async throws -> [String: Any] {
+  static func fetchJSON(
+    _ url: URL,
+    transport: HTTPClient,
+    timeout: TimeInterval = metadataTimeoutSeconds
+  ) async throws -> [String: Any] {
     var req = URLRequest(url: url)
     req.httpMethod = "GET"
     req.setValue(metadataAuthHeader, forHTTPHeaderField: "Authorization")
     req.setValue("application/json", forHTTPHeaderField: "Accept")
-    req.timeoutInterval = 10
+    req.timeoutInterval = timeout
     let (data, resp) = try await transport.data(req)
     guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
       throw InstancePrincipalError.metadataUnavailable(url.path)
@@ -574,8 +781,13 @@ extension InstancePrincipalSigner {
       .replacing("-----END CERTIFICATE-----", with: "")
       .replacing("-----BEGIN PUBLIC KEY-----", with: "")
       .replacing("-----END PUBLIC KEY-----", with: "")
-      .replacing("\r", with: "")
-      .replacing("\n", with: "")
+      // Matches any newline *sequence*. A plain `.replacing("\r", …)` cannot:
+      // `replacing(_:with:)` is grapheme-based, and CRLF is a single grapheme
+      // cluster, so neither "\r" nor "\n" matches inside it and a CRLF-wrapped
+      // PEM survives unchanged. A `/[\r\n]/` class is worse still — under grapheme
+      // semantics it holds the one CRLF grapheme, so it strips CRLF but misses a
+      // lone CR or LF. `.newlineSequence` covers CR, LF, CRLF and U+2028/U+2029.
+      .replacing(CharacterClass.newlineSequence, with: "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -592,11 +804,18 @@ extension InstancePrincipalSigner {
       pem
       .replacing("-----BEGIN CERTIFICATE-----", with: "")
       .replacing("-----END CERTIFICATE-----", with: "")
-      .replacing("\r", with: "")
-      .replacing("\n", with: "")
+      // Matches any newline *sequence*. A plain `.replacing("\r", …)` cannot:
+      // `replacing(_:with:)` is grapheme-based, and CRLF is a single grapheme
+      // cluster, so neither "\r" nor "\n" matches inside it and a CRLF-wrapped
+      // PEM survives unchanged. A `/[\r\n]/` class is worse still — under grapheme
+      // semantics it holds the one CRLF grapheme, so it strips CRLF but misses a
+      // lone CR or LF. `.newlineSequence` covers CR, LF, CRLF and U+2028/U+2029.
+      .replacing(CharacterClass.newlineSequence, with: "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    // The PEM always originates from IMDS (`/identity/cert.pem`), never from the
+    // federation response, so this must not report a federation-decode failure.
     guard let der = Data(base64Encoded: trimmed) else {
-      throw InstancePrincipalError.malformedFederationResponse("invalid certificate PEM")
+      throw InstancePrincipalError.invalidCertificate("the PEM body is not valid base64")
     }
     return der
   }
@@ -656,47 +875,5 @@ extension InstancePrincipalSigner {
       i += 1
     }
     return nil
-  }
-}
-
-// MARK: - Security token (JWT) parsing (no signature verification)
-
-/// Minimal JWT reader for the instance-principal security token. Like the Python
-/// SDK, the SDK only needs `iat`/`exp` and does **not** verify the signature.
-enum InstancePrincipalToken {
-  /// Returns `(iat, exp)` epoch-second claims, either `nil` if absent/unparseable.
-  static func issuedAndExpiry(of token: String) -> (issuedAt: Int?, expiry: Int?) {
-    guard let claims = payload(of: token) else { return (nil, nil) }
-    return (intClaim(claims["iat"]), intClaim(claims["exp"]))
-  }
-
-  private static func intClaim(_ value: Any?) -> Int? {
-    if let i = value as? Int { return i }
-    if let d = value as? Double { return Int(d) }
-    return nil
-  }
-
-  private static func payload(of token: String) -> [String: Any]? {
-    let parts = token.split(separator: ".")
-    guard parts.count >= 2,
-      let data = base64URLDecode(String(parts[1])),
-      let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-    else {
-      return nil
-    }
-    return object
-  }
-
-  /// Decodes a base64url JWT segment (base64url, no padding).
-  static func base64URLDecode(_ string: String) -> Data? {
-    var base64 =
-      string
-      .replacing("-", with: "+")
-      .replacing("_", with: "/")
-    let remainder = base64.count % 4
-    if remainder > 0 {
-      base64 += String(repeating: "=", count: 4 - remainder)
-    }
-    return Data(base64Encoded: base64)
   }
 }
