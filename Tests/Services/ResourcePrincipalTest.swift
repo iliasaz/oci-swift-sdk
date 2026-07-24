@@ -74,18 +74,18 @@ struct ResourcePrincipalTokenTests {
   func readsExp() {
     let exp = 1_893_456_000  // 2030-01-01
     let jwt = makeJWT(claims: ["exp": exp, "res_tenant": "ocid1.tenancy.oc1..aaaa"])
-    #expect(ResourcePrincipalToken.expiry(of: jwt) == exp)
+    #expect(TokenClaims.expiry(of: jwt) == exp)
   }
 
   @Test("Returns nil for a token without an exp claim")
   func missingExpIsNil() {
     let jwt = makeJWT(claims: ["res_tenant": "ocid1.tenancy.oc1..aaaa"])
-    #expect(ResourcePrincipalToken.expiry(of: jwt) == nil)
+    #expect(TokenClaims.expiry(of: jwt) == nil)
   }
 
   @Test("Returns nil for a malformed token")
   func malformedIsNil() {
-    #expect(ResourcePrincipalToken.expiry(of: "not-a-jwt") == nil)
+    #expect(TokenClaims.expiry(of: "not-a-jwt") == nil)
   }
 }
 

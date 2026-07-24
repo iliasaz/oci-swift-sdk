@@ -270,14 +270,14 @@ struct OKEWorkloadIdentityTokenTests {
   @Test("issuedAndExpiry reads the iat and exp claims")
   func readsClaims() {
     let jwt = makeJWT(claims: ["iat": 1000, "exp": 5000])
-    let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: jwt)
+    let claims = TokenClaims.issuedAndExpiry(of: jwt)
     #expect(claims.issuedAt == 1000)
     #expect(claims.expiry == 5000)
   }
 
   @Test("issuedAndExpiry returns nils for a malformed token")
   func malformedIsNil() {
-    let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: "not-a-jwt")
+    let claims = TokenClaims.issuedAndExpiry(of: "not-a-jwt")
     #expect(claims.issuedAt == nil)
     #expect(claims.expiry == nil)
   }
@@ -285,10 +285,10 @@ struct OKEWorkloadIdentityTokenTests {
   @Test("isUnexpired is true only for a future exp claim")
   func expiryCheck() {
     let now = Int(Date().timeIntervalSince1970)
-    #expect(OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["exp": now + 60]), now: now))
-    #expect(!OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["exp": now - 60]), now: now))
+    #expect(TokenClaims.isUnexpired(makeJWT(claims: ["exp": now + 60]), now: now))
+    #expect(!TokenClaims.isUnexpired(makeJWT(claims: ["exp": now - 60]), now: now))
     // No exp claim -> not usable.
-    #expect(!OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["sub": "x"]), now: now))
+    #expect(!TokenClaims.isUnexpired(makeJWT(claims: ["sub": "x"]), now: now))
   }
 }
 
