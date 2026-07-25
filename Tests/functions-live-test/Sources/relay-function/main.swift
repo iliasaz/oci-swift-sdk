@@ -37,7 +37,7 @@ try await FunctionRuntime.serve { _, _ in
     }
     // Resource Principal v2.2: OCI injects the session token + key into the
     // container environment; the signer reads them with no config file.
-    let signer = try runtime.resourcePrincipalSigner()
+    let signer = try await runtime.resourcePrincipalSigner()
     let objectStorage = try ObjectStorageClient(region: .phx, signer: signer)
     let data = try await objectStorage.getObject(
       namespaceName: namespace,

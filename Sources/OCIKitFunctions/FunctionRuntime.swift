@@ -37,7 +37,7 @@ import Logging
 /// import OCIKitFunctions
 ///
 /// let runtime = RuntimeContext.fromEnvironment()
-/// let signer = try runtime.resourcePrincipalSigner()          // built once
+/// let signer = try await runtime.resourcePrincipalSigner()    // built once
 /// let objectStorage = try ObjectStorageClient(region: .iad, signer: signer)
 ///
 /// try await FunctionRuntime.serve { context, request in

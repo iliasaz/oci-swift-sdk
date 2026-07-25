@@ -93,7 +93,7 @@ struct PutObjectHeaderCasingDiagnostics {
     )
     var req = try buildRequest(api: api, endpoint: endpoint)
     req.httpBody = body
-    try signer.sign(&req)
+    try await signer.sign(&req)
 
     let (data, response) = try await URLSession.shared.data(for: req)
     let http = try #require(response as? HTTPURLResponse)

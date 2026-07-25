@@ -286,7 +286,7 @@ public struct GenerateText {
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = "POST"
     urlRequest.httpBody = body
-    try signer.sign(&urlRequest)
+    try await signer.sign(&urlRequest)
     logger.debug("http request: \(urlRequest)")
     let headers = urlRequest.allHTTPHeaderFields?.values.joined(separator: "\n") ?? ""
     logger.debug("http headers: \(headers)")

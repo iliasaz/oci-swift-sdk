@@ -127,24 +127,32 @@ enum ResourcePrincipalSource: Equatable {
 /// ## Example
 /// ```swift
 /// // Inside a Container Instance / Function where OCI injects the RP env vars:
-/// let signer = try ResourcePrincipalSigner.fromEnvironment()
+/// let signer = try await ResourcePrincipalSigner.fromEnvironment()
 /// let client = try ObjectStorageClient(region: .fra, signer: signer)
 /// ```
-public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendable {
+///
+/// ## Concurrency
+///
+/// The signer is an `actor`: its cached RPST/key are actor-isolated (no lock),
+/// and ``sign(_:)`` reloads inline when the token is within its expiry jitter.
+/// Unlike the network-based principals, refresh here is cheap (a re-read of the
+/// injected env value or on-disk file), so there is no background/single-flight
+/// machinery.
+public actor ResourcePrincipalSigner: RefreshableSigner {
   private let rpstSource: ResourcePrincipalSource
   private let keySource: ResourcePrincipalSource
 
   /// The region id reported by `OCI_RESOURCE_PRINCIPAL_REGION`, if any.
   /// Used by callers to select a service endpoint; not part of signing.
-  public let region: String?
+  public nonisolated let region: String?
 
-  /// Seconds before the RPST `exp` at which the token is treated as expired.
-  private static let expiryJitterSeconds = 60
 
-  private let lock = NSLock()
   private var cachedToken: String?
   private var cachedKey: _RSA.Signing.PrivateKey?
   private var cachedExpiry: Int?
+  /// When the cached token was loaded; the staleness bound for a token that
+  /// carries no readable `exp` claim.
+  private var cachedObtainedAt: Int?
 
   // MARK: Designated init
 
@@ -156,15 +164,16 @@ public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendab
 
   // MARK: Public constructors
 
-  /// Builds a signer from the Resource Principals environment variables.
+  /// Builds a signer from the Resource Principals environment variables and
+  /// eagerly loads the RPST + key so the returned signer is immediately usable.
   ///
   /// - Parameter environment: The environment to read (defaults to the process
   ///   environment). Injectable for testing.
   /// - Throws: ``ResourcePrincipalError`` when the version is missing/unsupported
-  ///   or required values are absent.
+  ///   or required values are absent/invalid.
   public static func fromEnvironment(
     _ environment: [String: String] = ProcessInfo.processInfo.environment
-  ) throws -> ResourcePrincipalSigner {
+  ) async throws -> ResourcePrincipalSigner {
     guard let version = environment[ResourcePrincipalEnv.version], !version.isEmpty else {
       throw ResourcePrincipalError.versionNotDefined
     }
@@ -184,7 +193,7 @@ public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendab
       region: environment[ResourcePrincipalEnv.region]
     )
     // Fail fast if the injected material is invalid, rather than at first request.
-    try signer.forceRefresh()
+    try await signer.refresh()
     return signer
   }
 
@@ -194,53 +203,76 @@ public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendab
   ///   - sessionToken: The raw RPST value.
   ///   - privateKeyPEM: The private key in PEM format.
   ///   - region: Optional region id.
-  public convenience init(sessionToken: String, privateKeyPEM: String, region: String? = nil) {
-    self.init(rpstSource: .value(sessionToken), keySource: .pem(privateKeyPEM), region: region)
+  public init(sessionToken: String, privateKeyPEM: String, region: String? = nil) {
+    self.rpstSource = .value(sessionToken)
+    self.keySource = .pem(privateKeyPEM)
+    self.region = region
   }
 
   // MARK: Signer
 
-  public func sign(_ req: inout URLRequest) throws {
-    let (token, key) = try current()
-    try SecurityTokenSigner(securityToken: token, privateKey: key).sign(&req)
+  /// Signs `req` with the cached RPST, reloading inline when the token is within
+  /// its expiry jitter.
+  ///
+  /// Deliberately `nonisolated`, so that only the credential snapshot is
+  /// actor-isolated and the signing work (RSA signature + request-body SHA-256)
+  /// provably stays off this actor's executor, regardless of whether the
+  /// `nonisolated async` callee follows SE-0338 or SE-0461 semantics. See
+  /// ``InstancePrincipalSigner/sign(_:)`` for the full rationale.
+  public nonisolated func sign(_ req: inout URLRequest) async throws {
+    let (token, key) = try await credentials()
+    try await SecurityTokenSigner(securityToken: token, privateKey: key).sign(&req)
+  }
+
+  /// Returns a currently-valid token + key pair, reloading inline when the cache
+  /// is empty or within the expiry jitter. Isolated, so the two values are
+  /// snapshotted together and always come from the same reload.
+  private func credentials() throws -> (String, _RSA.Signing.PrivateKey) {
+    try current()
   }
 
   // MARK: Refresh
 
-  /// Forces a reload of the RPST and private key from their sources, regardless
-  /// of the cached token's remaining lifetime. Call this after receiving a `401`.
-  public func forceRefresh() throws {
-    lock.lock()
-    defer { lock.unlock() }
-    try refreshLocked()
+  /// Reloads the RPST and private key from their sources, regardless of the
+  /// cached token's remaining lifetime. Called after a `401`.
+  public func forceRefresh() async throws {
+    try reload()
   }
 
-  /// Returns a currently-valid token/key pair, refreshing if the cache is empty
+  /// Reloads unconditionally. Alias of ``forceRefresh()`` for a uniform surface
+  /// across the token signers.
+  public func refresh() async throws {
+    try reload()
+  }
+
+  /// Reloads only if the cache is empty or within the expiry jitter of its `exp`.
+  public func refreshIfNeeded() async throws {
+    _ = try current()
+  }
+
+  /// Returns a currently-valid token/key pair, reloading if the cache is empty
   /// or the cached token is within the expiry jitter of its `exp`.
   private func current() throws -> (String, _RSA.Signing.PrivateKey) {
-    lock.lock()
-    defer { lock.unlock() }
-
-    if let token = cachedToken, let key = cachedKey {
-      if let exp = cachedExpiry {
-        let now = Int(Date().timeIntervalSince1970)
-        if now <= exp - Self.expiryJitterSeconds {
-          return (token, key)
-        }
-        // Token is within the jitter window — fall through and refresh.
-      }
-      else {
-        // No exp claim to evaluate; keep the cached material.
-        return (token, key)
-      }
+    if let token = cachedToken, let key = cachedKey, let obtainedAt = cachedObtainedAt,
+      TokenRefreshPolicy.isFreshWithinJitter(
+        expiry: cachedExpiry,
+        obtainedAt: obtainedAt,
+        now: Int(Date().timeIntervalSince1970)
+      )
+    {
+      return (token, key)
     }
-
-    try refreshLocked()
-    return (cachedToken!, cachedKey!)
+    // Empty cache, inside the jitter window, or past the no-`exp` TTL — reload.
+    return try reload()
   }
 
-  /// Reloads token + key from their sources. Caller must hold `lock`.
-  private func refreshLocked() throws {
+  /// Reloads token + key from their sources and caches them.
+  ///
+  /// Stays actor-isolated so the cache write is serialized: when the sources are
+  /// files this performs synchronous I/O on the actor, but only on the reload
+  /// path (an empty cache or a token inside the expiry jitter), not per signature.
+  @discardableResult
+  private func reload() throws -> (String, _RSA.Signing.PrivateKey) {
     let token = try rpstSource.resolve().trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else { throw ResourcePrincipalError.missingSessionToken }
 
@@ -251,7 +283,9 @@ public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendab
 
     cachedToken = token
     cachedKey = key
-    cachedExpiry = ResourcePrincipalToken.expiry(of: token)
+    cachedExpiry = TokenClaims.expiry(of: token)
+    cachedObtainedAt = Int(Date().timeIntervalSince1970)
+    return (token, key)
   }
 }
 
@@ -260,38 +294,4 @@ public final class ResourcePrincipalSigner: RefreshableSigner, @unchecked Sendab
 extension ResourcePrincipalSource {
   /// A literal PEM value. Alias for `.value` that reads clearly at call sites.
   static func pem(_ pem: String) -> ResourcePrincipalSource { .value(pem) }
-}
-
-// MARK: - RPST JWT parsing (no signature verification)
-
-/// Minimal RPST (JWT) reader. The RPST is a signed JWT, but — exactly like the
-/// Python SDK — the SDK only needs the `exp` claim and does **not** verify the
-/// signature (no key is required to read claims).
-enum ResourcePrincipalToken {
-  /// Returns the `exp` claim (epoch seconds) from a JWT, or `nil` if absent/unparseable.
-  static func expiry(of token: String) -> Int? {
-    let parts = token.split(separator: ".")
-    guard parts.count >= 2,
-      let payload = base64URLDecode(String(parts[1])),
-      let object = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any]
-    else {
-      return nil
-    }
-    if let exp = object["exp"] as? Int { return exp }
-    if let exp = object["exp"] as? Double { return Int(exp) }
-    return nil
-  }
-
-  /// Decodes a base64url segment (JWT payloads use base64url without padding).
-  static func base64URLDecode(_ string: String) -> Data? {
-    var base64 =
-      string
-      .replacingOccurrences(of: "-", with: "+")
-      .replacingOccurrences(of: "_", with: "/")
-    let remainder = base64.count % 4
-    if remainder > 0 {
-      base64 += String(repeating: "=", count: 4 - remainder)
-    }
-    return Data(base64Encoded: base64)
-  }
 }
