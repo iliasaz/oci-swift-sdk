@@ -43,7 +43,7 @@ struct OCIFixtureReplayTests {
 
     let namespace = try await client.getNamespace()
 
-    #expect(namespace == "frjfldcyl3la")
+    #expect(namespace == "examplenamespace")
   }
 
   @Test("the committed fixture round-trips through HTTPFixture")
@@ -51,7 +51,7 @@ struct OCIFixtureReplayTests {
     let fixture = try HTTPFixture.load(fromFile: fixtureURL("getNamespace.json"))
     #expect(fixture.statusCode == 200)
     #expect(fixture.request.method == "GET")
-    #expect(String(data: fixture.body, encoding: .utf8) == #""frjfldcyl3la""#)
+    #expect(String(data: fixture.body, encoding: .utf8) == #""examplenamespace""#)
     // The header the client reads for tracing was captured from the wire:
     #expect(fixture.headers.keys.contains { $0.lowercased() == "opc-request-id" })
   }
@@ -65,7 +65,7 @@ struct OCIFixtureReplayTests {
     let client = try ObjectStorageClient(region: .phx, signer: ReplayStubSigner(), httpClient: http)
 
     let data = try await client.getObject(
-      namespaceName: "frjfldcyl3la",
+      namespaceName: "examplenamespace",
       bucketName: "oci-swift-sdk-range-test",
       objectName: "range-object.txt",
       range: "bytes=0-15"

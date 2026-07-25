@@ -52,7 +52,7 @@ struct OCICaptureTests {
     // Real OCI needs a real signature; a local mock endpoint does not.
     let signer: Signer
     if let configFile = env["OCI_CONFIG_FILE"] {
-      signer = try APIKeySigner(configFilePath: configFile, configName: env["OCI_PROFILE"] ?? "DEFAULT")
+      signer = try APIKeySigner(configFilePath: configFile, configName: env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT")
     }
     else {
       signer = CaptureStubSigner()
@@ -89,7 +89,7 @@ struct OCICaptureTests {
     // Real OCI needs a real signature; a local mock endpoint does not.
     let signer: Signer
     if let configFile = env["OCI_CONFIG_FILE"] {
-      signer = try APIKeySigner(configFilePath: configFile, configName: env["OCI_PROFILE"] ?? "DEFAULT")
+      signer = try APIKeySigner(configFilePath: configFile, configName: env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT")
     }
     else {
       signer = CaptureStubSigner()
@@ -122,7 +122,7 @@ struct OCICaptureTests {
       logger.info("Secrets capture skipped — set OCI_FIXTURE_OUT and OCI_CONFIG_FILE to record.")
       return nil
     }
-    let profile = env["OCI_PROFILE"] ?? "DEFAULT"
+    let profile = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     let signer = try APIKeySigner(configFilePath: configFile, configName: profile)
     let region = Region.from(regionId: try extractUserRegion(from: configFile, profile: profile) ?? "") ?? .iad
     let client = try SecretsClient(
@@ -200,7 +200,7 @@ struct OCICaptureTests {
       logger.info("Logging Ingestion capture skipped — set OCI_FIXTURE_OUT and OCI_CONFIG_FILE to record.")
       return nil
     }
-    let profile = env["OCI_PROFILE"] ?? "DEFAULT"
+    let profile = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
     let signer = try APIKeySigner(configFilePath: configFile, configName: profile)
     let region = Region.from(regionId: try extractUserRegion(from: configFile, profile: profile) ?? "") ?? .iad
     let client = try LoggingIngestClient(

@@ -1,0 +1,208 @@
+{
+  "configurations": [
+    {
+      "id": "0689E5B1-A518-425C-B99E-AE6C06767491",
+      "name": "Test Scheme Action",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "OCI_CONFIG_FILE",
+        "value": ""
+      },
+      {
+        "key": "OCI_PROFILE",
+        "value": "DEFAULT"
+      },
+      {
+        "key": "OCI_TENANCY_ID",
+        "value": "ocid1.tenancy.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_COMPARTMENT_ID",
+        "value": "ocid1.compartment.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_REGION",
+        "value": "us-phoenix-1"
+      },
+      {
+        "key": "OCI_NAMESPACE",
+        "value": "your-object-storage-namespace"
+      },
+      {
+        "key": "OCI_BUCKET",
+        "value": "your-test-bucket"
+      },
+      {
+        "key": "OCI_OBJECT",
+        "value": "Frame.png"
+      },
+      {
+        "key": "OCI_OS_OBJECT_SVG",
+        "value": "bucket.svg"
+      },
+      {
+        "key": "OCI_OS_OBJECT_TXT",
+        "value": "test_file.txt"
+      },
+      {
+        "key": "OCI_OS_UPLOAD_FILE",
+        "value": "/absolute/path/to/a/local/file.png"
+      },
+      {
+        "key": "OCI_OS_REPLICA_BUCKET",
+        "value": "your-replication-destination-bucket"
+      },
+      {
+        "key": "OCI_OS_PAR_BUCKET",
+        "value": "your-par-bucket"
+      },
+      {
+        "key": "OCI_OS_COPY_DEST_BUCKET",
+        "value": "your-copy-destination-bucket"
+      },
+      {
+        "key": "OCI_OS_DEST_REGION",
+        "value": "eu-frankfurt-1"
+      },
+      {
+        "key": "OCI_OS_METADATA_COMPARTMENT_ID",
+        "value": "ocid1.compartment.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_OS_NAMESPACE_2",
+        "value": "your-second-object-storage-namespace"
+      },
+      {
+        "key": "OCI_OS_PAR_URL_READ",
+        "value": "https://objectstorage.<region>.oraclecloud.com/p/<token>/n/<namespace>/b/<bucket>/o/"
+      },
+      {
+        "key": "OCI_OS_PAR_URL_WRITE",
+        "value": "https://objectstorage.<region>.oraclecloud.com/p/<token>/n/<namespace>/b/<bucket>/o/"
+      },
+      {
+        "key": "OCI_OS_PAR_ID_GET",
+        "value": "your-preauthenticated-request-id"
+      },
+      {
+        "key": "OCI_OS_PAR_ID",
+        "value": "your-preauthenticated-request-id-to-delete"
+      },
+      {
+        "key": "OCI_OS_OBJECT_VERSION_ID",
+        "value": "your-object-version-id"
+      },
+      {
+        "key": "OCI_OS_REPLICATION_ID",
+        "value": "your-replication-policy-id"
+      },
+      {
+        "key": "OCI_OS_RETENTION_RULE_ID_GET",
+        "value": "your-retention-rule-id"
+      },
+      {
+        "key": "OCI_OS_RETENTION_RULE_ID_DELETE",
+        "value": "your-retention-rule-id"
+      },
+      {
+        "key": "OCI_OS_RETENTION_RULE_ID_UPDATE",
+        "value": "your-retention-rule-id"
+      },
+      {
+        "key": "OCI_TEST_BUCKET",
+        "value": "your-put-header-diagnostics-bucket"
+      },
+      {
+        "key": "OCI_IAM_TEST_COMPARTMENT_ID",
+        "value": "ocid1.compartment.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_SECRET_ID",
+        "value": "ocid1.vaultsecret.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_VAULT_ID",
+        "value": "ocid1.vault.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_SECRET_NAME",
+        "value": "your-secret-name"
+      },
+      {
+        "key": "GENAI_COMPARTMENT_OCID",
+        "value": "ocid1.compartment.oc1..EXAMPLE"
+      },
+      {
+        "key": "GENAI_COHERE_MODEL_OCID",
+        "value": "ocid1.generativeaimodel.oc1..EXAMPLE"
+      },
+      {
+        "key": "GENAI_LLAMA_MODEL_OCID",
+        "value": "ocid1.generativeaimodel.oc1..EXAMPLE"
+      },
+      {
+        "key": "HEALTH_NER_ENDPOINT",
+        "value": "https://your-language-ner-endpoint.aiservice.oci.oraclecloud.com"
+      },
+      {
+        "key": "MONITORING_COMPARTMENT_OCID",
+        "value": "ocid1.compartment.oc1..EXAMPLE"
+      },
+      {
+        "key": "MONITORING_NAMESPACE",
+        "value": "ocikit_probe"
+      },
+      {
+        "key": "OCI_LOG_ID",
+        "value": "ocid1.log.oc1..EXAMPLE"
+      },
+      {
+        "key": "OCI_METADATA_BASE_URL",
+        "value": "http://169.254.169.254/opc/v2"
+      }
+    ],
+    "performanceAntipatternCheckerEnabled": true
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:",
+        "identifier": "OCIKitCoreTests",
+        "name": "OCIKitCoreTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:",
+        "identifier": "OCIKitFunctionsTests",
+        "name": "OCIKitFunctionsTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:",
+        "identifier": "OCIKitServiceTests",
+        "name": "OCIKitServiceTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:",
+        "identifier": "OCIKitWorkloadIdentityTests",
+        "name": "OCIKitWorkloadIdentityTests"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:",
+        "identifier": "Tests on Linux",
+        "name": "Tests on Linux"
+      }
+    }
+  ],
+  "version": 1
+}

@@ -18,7 +18,7 @@
 // to UNIT_TEST_FILTER in .github/workflows/linux.yml.
 //
 // Run locally against the live log group described in BRIEF.md:
-//   OCI_CONFIG_FILE=$HOME/.oci/config OCI_PROFILE=jroga \
+//   OCI_CONFIG_FILE=$HOME/.oci/config OCI_PROFILE=<your-profile> \
 //   OCI_LOG_ID=ocid1.log.oc1.phx.<redacted> \
 //   swift test --filter LoggingIngestionLiveTest
 //
@@ -37,8 +37,8 @@ struct LoggingIngestionLiveTest {
       return
     }
 
-    let configFilePath = env["OCI_CONFIG_FILE"] ?? "\(NSHomeDirectory())/.oci/config"
-    let profileName = env["OCI_PROFILE"] ?? "DEFAULT"
+    let configFilePath = env["OCI_CONFIG_FILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "\(NSHomeDirectory())/.oci/config"
+    let profileName = env["OCI_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "DEFAULT"
 
     let signer = try APIKeySigner(configFilePath: configFilePath, configName: profileName)
     let regionId = try extractUserRegion(from: configFilePath, profile: profileName)

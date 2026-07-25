@@ -62,13 +62,13 @@ struct ObjectStorageRetryTests {
   func clientLevelRetry() async throws {
     let script = ScriptedResponses([
       (503, errorBody),
-      (200, Data(#""frjfldcyl3la""#.utf8)),
+      (200, Data(#""examplenamespace""#.utf8)),
     ])
     let client = try makeClient(script: script, retryConfig: fastRetry)
 
     let namespace = try await client.getNamespace()
 
-    #expect(namespace == "frjfldcyl3la")
+    #expect(namespace == "examplenamespace")
     #expect(await script.attemptCount == 2)
   }
 
@@ -76,7 +76,7 @@ struct ObjectStorageRetryTests {
   func noConfigNoRetry() async throws {
     let script = ScriptedResponses([
       (503, errorBody),
-      (200, Data(#""frjfldcyl3la""#.utf8)),
+      (200, Data(#""examplenamespace""#.utf8)),
     ])
     let client = try makeClient(script: script, retryConfig: nil)
 
@@ -97,7 +97,7 @@ struct ObjectStorageRetryTests {
 
     await #expect(throws: ObjectStorageError.self) {
       try await client.deleteObject(
-        namespaceName: "frjfldcyl3la",
+        namespaceName: "examplenamespace",
         bucketName: "test_bucket_by_sdk",
         objectName: "greeting.txt",
         retryConfig: RetryConfig(maxAttempts: 1)
