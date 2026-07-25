@@ -16,7 +16,7 @@ import _CryptoExtras
 public struct APIKeySigner: Signer {
   private let config: SignerConfiguration
 
-  public func sign(_ req: inout URLRequest) throws {
+  public func sign(_ req: inout URLRequest) async throws {
     guard
       let tenancy = config.tenancyOCID,
       let user = config.userOCID,

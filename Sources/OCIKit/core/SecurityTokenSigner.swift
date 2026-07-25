@@ -34,7 +34,7 @@ public struct SecurityTokenSigner: Signer {
     self.init(securityToken: token, privateKey: configuration.privateKey)
   }
 
-  public func sign(_ req: inout URLRequest) throws {
+  public func sign(_ req: inout URLRequest) async throws {
     let keyId = "ST$\(securityToken)"
     try RequestSigner.sign(&req, with: privateKey, keyId: keyId, includeBodyForVerbs: ["post", "put", "patch"])
   }

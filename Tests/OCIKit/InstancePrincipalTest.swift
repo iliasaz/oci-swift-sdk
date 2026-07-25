@@ -37,7 +37,8 @@ struct InstancePrincipalObjectStorageTest {
       .lowercased()
   }
 
-  @Test func getNamespace_withInstancePrincipalSigner() async throws {
+  @Test("getNamespace succeeds when signed with an instance principal (live, self-skips off OCI)")
+  func getNamespace_withInstancePrincipalSigner() async throws {
     guard let regionRaw = await fetchIMDSRegion() else {
       logger.info("Skipping Instance Principal test: IMDS region unavailable (not running on OCI instance?)")
       return
@@ -48,7 +49,7 @@ struct InstancePrincipalObjectStorageTest {
       return
     }
 
-    let signer = try InstancePrincipalSigner()
+    let signer = try await InstancePrincipalSigner.fromMetadata()
     let client = try ObjectStorageClient(region: region, signer: signer)
 
     let namespace = try await client.getNamespace()

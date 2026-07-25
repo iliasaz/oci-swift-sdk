@@ -34,25 +34,22 @@
 // The ephemeral key is regenerated on every refresh, and the service-account
 // token is re-read from disk each time so a rotated token is picked up.
 //
-// ## Sync / async design
+// ## Concurrency
 //
-// The token exchange is a network round-trip, but ``Signer/sign(_:)`` is
-// synchronous. To honor the project's "async/await throughout, never block"
-// rule, this signer decouples the two and guards its cache with a `Mutex`
-// (`Synchronization`) — whose `withLock` is safe from async contexts — rather
-// than a blocking `NSLock`/`DispatchSemaphore`:
+// The token exchange is a network round-trip. This signer is an `actor`, so its
+// cached RPST + ephemeral key are protected by actor isolation rather than a
+// lock:
 //
-//   - ``fromEnvironment(transport:logger:_:)`` is `async` and performs the first
-//     exchange eagerly, so the returned signer is ready to sign.
+//   - ``fromEnvironment(transport:logger:environment:)`` is `async` and performs
+//     the first exchange eagerly, so the returned signer is ready to sign.
 //   - ``refresh()`` / ``refreshIfNeeded()`` are `async` and perform the exchange.
 //     Concurrent refreshes are coalesced into a single in-flight exchange.
-//   - ``sign(_:)`` is synchronous and uses only cached material. When the cached
-//     RPST is past its half-life it schedules a **non-blocking** background
-//     refresh so subsequent requests pick up a fresh token, but it never blocks.
+//   - ``sign(_:)`` refreshes inline when the cached RPST is missing or past its
+//     half-life (`await refreshIfNeeded()`), then signs.
 //
-// Long-running servers should call ``refreshIfNeeded()`` at the start of each
-// logical operation (see the `swift-oke` example) so the token never fully
-// expires between requests.
+// Long-running servers may still call ``refreshIfNeeded()`` at the start of each
+// logical operation (see the `swift-oke` example) to warm the token ahead of a
+// latency-sensitive request.
 //
 // ## TLS to the proxymux
 //
@@ -69,14 +66,15 @@
 // exactly what the Java/Python/Go SDKs do (no OS-trust-store install, no cluster
 // step). That transport lives in the opt-in `OCIKitWorkloadIdentity` product so
 // non-OKE consumers never pull the swift-nio dependency graph. Advanced callers
-// can instead pass any ``HTTPClient`` to ``fromEnvironment(transport:logger:_:)``
-// (e.g. ``HTTPClient/live`` when the cluster CA is already in the OS trust store).
+// can instead pass any ``HTTPClient`` to
+// ``fromEnvironment(transport:logger:environment:)`` (e.g. ``HTTPClient/live``
+// when the cluster CA is already in the OS trust store).
 //
 
 import Crypto
 import Foundation
 import Logging
-import Synchronization
+import RegexBuilder
 import _CryptoExtras
 
 #if canImport(FoundationNetworking)
@@ -98,9 +96,14 @@ public enum OKEWorkloadIdentityError: Error, LocalizedError, Equatable {
   case tokenExchangeFailed(status: Int, message: String)
   /// The proxymux response could not be base64/JSON-decoded into an RPST.
   case malformedTokenResponse(String)
-  /// The signer has no cached token yet — call ``OKEWorkloadIdentitySigner/refresh()``
-  /// (or build it with ``OKEWorkloadIdentitySigner/fromEnvironment(transport:logger:_:)``,
-  /// which primes it) before signing.
+  /// The signer has no cached token yet. Provably unreachable in the current
+  /// implementation: the private `credentials()` accessor that ``sign(_:)``
+  /// calls always refreshes inline via ``refreshIfNeeded()`` before reading the
+  /// cache, and ``performRefresh()`` assigns the RPST and ephemeral key together
+  /// in one non-suspending step — so a non-throwing refresh always leaves both
+  /// set. Retained as a defensive guard rather than a force-unwrap, so a future
+  /// refactor that decouples those two invariants fails with a thrown error
+  /// instead of a crash.
   case notPrimed
   /// The freshly generated ephemeral key could not be produced.
   case keyGenerationFailed
@@ -170,7 +173,8 @@ enum ServiceAccountTokenSource: Equatable, Sendable {
 /// The batteries-included entry point is `fromWorkloadIdentity()` in the
 /// `OCIKitWorkloadIdentity` product, which supplies an in-process CA-pinning
 /// transport for the proxymux exchange. This core type takes an **injected**
-/// transport; see ``fromEnvironment(transport:logger:_:)`` for advanced use.
+/// transport; see ``fromEnvironment(transport:logger:environment:)`` for
+/// advanced use.
 ///
 /// ## Example
 /// ```swift
@@ -185,35 +189,31 @@ enum ServiceAccountTokenSource: Equatable, Sendable {
 /// try await signer.refreshIfNeeded()
 /// let data = try await client.getObject(namespaceName: ns, bucketName: b, objectName: o)
 /// ```
-public final class OKEWorkloadIdentitySigner: RefreshableSigner {
+public actor OKEWorkloadIdentitySigner: RefreshableSigner {
   /// The full proxymux token-exchange endpoint.
-  let proxymuxEndpoint: URL
+  public nonisolated let proxymuxEndpoint: URL
   /// Where the SA token is read from.
   let saTokenSource: ServiceAccountTokenSource
   /// The CA cert path used to verify the proxymux TLS cert. Stored for callers
   /// that inject a CA-pinning transport; the default `URLSession` transport
   /// cannot pin it in-process and relies on the OS trust store instead.
-  public let caCertPath: String
+  public nonisolated let caCertPath: String
   /// The region id reported by `OCI_RESOURCE_PRINCIPAL_REGION`, if any.
-  public let region: String?
+  public nonisolated let region: String?
 
   private let transport: HTTPClient
   private let logger: Logger
 
-  /// Seconds before `exp` used as the refresh threshold when the RPST carries no
-  /// `iat` claim (so a half-life cannot be computed).
-  private static let fallbackJitterSeconds = 60
-
-  /// All mutable state, guarded by a `Mutex` (async-safe scoped locking).
-  private struct State {
-    var token: String?
-    var key: _RSA.Signing.PrivateKey?
-    var issuedAt: Int?
-    var expiry: Int?
-    /// The in-flight refresh, if any; used to coalesce concurrent refreshes.
-    var inFlight: Task<Void, Error>?
-  }
-  private let state = Mutex(State())
+  // Actor-isolated cache.
+  private var token: String?
+  private var key: _RSA.Signing.PrivateKey?
+  private var issuedAt: Int?
+  private var expiry: Int?
+  /// When the cached RPST was obtained; the staleness bound for a token that
+  /// carries no readable `exp` claim.
+  private var obtainedAt: Int?
+  /// Bookkeeping for the single-flight exchange; see ``SingleFlightExchange``.
+  private var exchange = SingleFlightExchange()
 
   // MARK: Designated init
 
@@ -255,7 +255,7 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
   public static func fromEnvironment(
     transport: HTTPClient,
     logger: Logger = Logger(label: "OKEWorkloadIdentitySigner"),
-    _ environment: [String: String] = ProcessInfo.processInfo.environment
+    environment: [String: String] = ProcessInfo.processInfo.environment
   ) async throws -> OKEWorkloadIdentitySigner {
     let signer = try make(transport: transport, logger: logger, environment: environment)
     // Fail fast if the environment/cluster is misconfigured, rather than at first request.
@@ -309,60 +309,102 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
 
   // MARK: Signer
 
-  public func sign(_ req: inout URLRequest) throws {
-    let now = Int(Date().timeIntervalSince1970)
-    let snapshot: (token: String, key: _RSA.Signing.PrivateKey, valid: Bool)? = state.withLock { s in
-      guard let token = s.token, let key = s.key else { return nil }
-      return (token, key, Self.isValid(s, now: now))
-    }
-    guard let snapshot else { throw OKEWorkloadIdentityError.notPrimed }
+  /// Signs `req` with the cached RPST, exchanging inline when the cache is empty
+  /// or past its half-life.
+  ///
+  /// Deliberately `nonisolated`, so that only the credential snapshot is
+  /// actor-isolated and the signing work (RSA signature + request-body SHA-256)
+  /// provably stays off this actor's executor, regardless of whether the
+  /// `nonisolated async` callee follows SE-0338 or SE-0461 semantics. See
+  /// ``InstancePrincipalSigner/sign(_:)`` for the full rationale.
+  public nonisolated func sign(_ req: inout URLRequest) async throws {
+    let (token, key) = try await credentials()
+    try await SecurityTokenSigner(securityToken: token, privateKey: key).sign(&req)
+  }
 
-    // Past half-life: warm the cache for the next request without blocking this one.
-    if !snapshot.valid {
-      scheduleBackgroundRefresh()
-    }
-    try SecurityTokenSigner(securityToken: snapshot.token, privateKey: snapshot.key).sign(&req)
+  /// Returns a currently-valid RPST + key pair, exchanging inline when the cache
+  /// is empty or past its half-life. Isolated, so the two values are snapshotted
+  /// together and always belong to the same exchange.
+  private func credentials() async throws -> (String, _RSA.Signing.PrivateKey) {
+    try await refreshIfNeeded()
+    guard let token, let key else { throw OKEWorkloadIdentityError.notPrimed }
+    return (token, key)
   }
 
   // MARK: Refresh
 
-  /// Marks the cache stale and schedules a non-blocking background refresh, then
-  /// returns immediately. Called by ``HTTPClient/send(_:signer:retry:logger:)``
-  /// after a `401`. Because the exchange is asynchronous, the refresh may not
-  /// have completed by the time the caller's single immediate retry re-signs;
-  /// the recovered token is picked up by the next request. For guaranteed
-  /// freshness, `await` ``refreshIfNeeded()`` before the operation.
-  public func forceRefresh() throws {
-    state.withLock { $0.expiry = 0 }  // force isValid -> false
-    scheduleBackgroundRefresh()
+  /// Invalidates the cache and re-exchanges so the next ``sign(_:)`` uses fresh
+  /// credentials. Called by ``HTTPClient/send(_:signer:retry:logger:)`` after a
+  /// `401`; because it is `async`, the caller's immediate retry re-signs with the
+  /// recovered token.
+  public func forceRefresh() async throws {
+    expiry = 0  // invalidate any concurrently-observed cached token
+    // Deliberately refuses to join an exchange that began *before* this call. Such
+    // an exchange read its credential material before the `401`, so it can only
+    // hand back what the service just rejected — and the retry, which gets only
+    // one shot, would re-sign with it and fail again. Concurrent `forceRefresh()`
+    // calls still coalesce onto one post-`401` exchange, so a certificate rotation
+    // that rejects N in-flight requests triggers one exchange, not N.
+    let startedBefore = exchange.started
+    while true {
+      // Joinable when the running exchange read its material after a `401` (it is
+      // itself forced, i.e. part of this same rejection wave) or simply began
+      // after this call. Either way its result cannot be the rejected credentials.
+      if let running = exchange.running, exchange.kind == .forced || exchange.started > startedBefore {
+        try await running.value
+        return
+      }
+      // A routine exchange that predates this call: wait it out so two exchanges
+      // never overlap, but discard its result rather than adopting it.
+      if let running = exchange.running {
+        _ = try? await running.value
+        continue
+      }
+      try await startExchange(kind: .forced)
+      return
+    }
   }
 
   /// Refreshes the token only if the cache is empty or past its half-life.
   public func refreshIfNeeded() async throws {
     let now = Int(Date().timeIntervalSince1970)
-    let valid = state.withLock { s in s.token != nil && s.key != nil && Self.isValid(s, now: now) }
-    if valid { return }
+    if isValid(now: now) { return }
     try await refresh()
   }
 
   /// Performs (or joins an in-flight) token exchange with the proxymux and
-  /// updates the cached RPST + ephemeral key.
+  /// updates the cached RPST + ephemeral key. Concurrent callers coalesce onto
+  /// one exchange.
   public func refresh() async throws {
-    let task: Task<Void, Error> = state.withLock { s in
-      if let existing = s.inFlight { return existing }
-      let created = Task { [self] in
-        defer { state.withLock { $0.inFlight = nil } }
-        try await performRefresh()
-      }
-      s.inFlight = created
-      return created
+    if let running = exchange.running {
+      try await running.value
+      return
     }
+    try await startExchange(kind: .routine)
+  }
+
+  /// Starts a new exchange and awaits it. The caller must have established that
+  /// nothing acceptable is already in flight.
+  private func startExchange(kind: SingleFlightExchange.Kind) async throws {
+    let task = Task { try await self.performRefresh() }
+    exchange.begin(task, kind: kind)
     try await task.value
   }
 
   private func performRefresh() async throws {
+    // Marks the exchange finished on both success and failure. Runs as this
+    // actor-isolated body returns — strictly before any `await task.value`
+    // awaiter is resumed — so a caller waiting an exchange out always observes it
+    // as finished when it wakes, and cannot spin.
+    defer { exchange.finish() }
+
     // 1. Fresh ephemeral RSA-2048 keypair on every refresh (matches Python).
-    guard let key = try? _RSA.Signing.PrivateKey(keySize: .bits2048) else {
+    //    Generated off this actor — see ``makeEphemeralKey()``.
+    let key: _RSA.Signing.PrivateKey
+    do {
+      key = try await makeEphemeralKey()
+    }
+    catch {
       throw OKEWorkloadIdentityError.keyGenerationFailed
     }
     let podKey = Self.sanitizedPodKey(fromSPKIPEM: key.publicKey.pemRepresentation)
@@ -397,20 +439,27 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
     }
 
     let rpst = try Self.decodeRPST(fromResponseBody: data)
-    let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: rpst)
+    let claims = TokenClaims.issuedAndExpiry(of: rpst)
 
-    state.withLock { s in
-      s.token = rpst
-      s.key = key
-      s.issuedAt = claims.issuedAt
-      s.expiry = claims.expiry
-    }
+    self.token = rpst
+    self.key = key
+    self.issuedAt = claims.issuedAt
+    self.expiry = claims.expiry
+    self.obtainedAt = Int(Date().timeIntervalSince1970)
     logger.debug("OKE workload identity: obtained RPST (exp=\(claims.expiry.map(String.init) ?? "nil"))")
   }
 
-  /// Fires a background refresh (coalesced by ``refresh()``). Non-blocking.
-  private func scheduleBackgroundRefresh() {
-    Task { [self] in try? await refresh() }
+  /// Generates the ephemeral RSA-2048 keypair.
+  ///
+  /// Marked `@concurrent` so this runs on the concurrent executor rather than the
+  /// signer's actor. RSA-2048 key generation is a synchronous CPU burst (measured
+  /// 45-220ms) with no suspension point, so generating it inline would hold the
+  /// actor for that whole window and stall every concurrent ``sign(_:)`` on its
+  /// credential snapshot. See ``InstancePrincipalSigner`` for the full rationale
+  /// on `@concurrent` over a detached task or a bare `nonisolated async` function.
+  @concurrent
+  private nonisolated func makeEphemeralKey() async throws -> _RSA.Signing.PrivateKey {
+    try _RSA.Signing.PrivateKey(keySize: .bits2048)
   }
 
   /// Reads and validates the service-account token, re-reading files each call.
@@ -429,24 +478,21 @@ public final class OKEWorkloadIdentitySigner: RefreshableSigner {
     guard !token.isEmpty else {
       throw OKEWorkloadIdentityError.serviceAccountTokenReadFailed(String(describing: saTokenSource))
     }
-    guard OKEWorkloadIdentityToken.isUnexpired(token, now: Int(Date().timeIntervalSince1970)) else {
+    guard TokenClaims.isUnexpired(token, now: Int(Date().timeIntervalSince1970)) else {
       throw OKEWorkloadIdentityError.serviceAccountTokenExpired
     }
     return token
   }
 
-  /// Whether the cached token is still within its half-life.
-  private static func isValid(_ s: State, now: Int) -> Bool {
-    guard s.token != nil, s.key != nil else { return false }
-    guard let exp = s.expiry else { return true }  // no exp to evaluate: keep it
-    let threshold: Int
-    if let iat = s.issuedAt, exp > iat {
-      threshold = exp - (exp - iat) / 2  // midpoint of the validity window
-    }
-    else {
-      threshold = exp - fallbackJitterSeconds
-    }
-    return now < threshold
+  /// Whether the cached token is present and still within its half-life.
+  private func isValid(now: Int) -> Bool {
+    guard token != nil, key != nil, let obtainedAt else { return false }
+    return TokenRefreshPolicy.isFreshAtHalfLife(
+      issuedAt: issuedAt,
+      expiry: expiry,
+      obtainedAt: obtainedAt,
+      now: now
+    )
   }
 }
 
@@ -461,8 +507,13 @@ extension OKEWorkloadIdentitySigner {
       .replacing("-----END PUBLIC KEY-----", with: "")
       .replacing("-----BEGIN CERTIFICATE-----", with: "")
       .replacing("-----END CERTIFICATE-----", with: "")
-      .replacing("\r", with: "")
-      .replacing("\n", with: "")
+      // Matches any newline *sequence*. A plain `.replacing("\r", …)` cannot:
+      // `replacing(_:with:)` is grapheme-based, and CRLF is a single grapheme
+      // cluster, so neither "\r" nor "\n" matches inside it and a CRLF-wrapped
+      // PEM survives unchanged. A `/[\r\n]/` class is worse still — under grapheme
+      // semantics it holds the one CRLF grapheme, so it strips CRLF but misses a
+      // lone CR or LF. `.newlineSequence` covers CR, LF, CRLF and U+2028/U+2029.
+      .replacing(CharacterClass.newlineSequence, with: "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -531,53 +582,5 @@ extension OKEWorkloadIdentitySigner {
       (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
     }
     return "\(segment())/\(segment())/\(segment())"
-  }
-}
-
-// MARK: - JWT parsing (no signature verification)
-
-/// Minimal JWT reader for the RPST and the SA token. Like the Python SDK, the
-/// SDK only needs `iat`/`exp` and does **not** verify the JWT signature.
-enum OKEWorkloadIdentityToken {
-  /// Returns `(iat, exp)` epoch-second claims, either `nil` if absent/unparseable.
-  static func issuedAndExpiry(of token: String) -> (issuedAt: Int?, expiry: Int?) {
-    guard let claims = payload(of: token) else { return (nil, nil) }
-    return (intClaim(claims["iat"]), intClaim(claims["exp"]))
-  }
-
-  /// Whether `token` has an `exp` claim that is still in the future.
-  static func isUnexpired(_ token: String, now: Int) -> Bool {
-    guard let claims = payload(of: token), let exp = intClaim(claims["exp"]) else { return false }
-    return now < exp
-  }
-
-  private static func intClaim(_ value: Any?) -> Int? {
-    if let i = value as? Int { return i }
-    if let d = value as? Double { return Int(d) }
-    return nil
-  }
-
-  private static func payload(of token: String) -> [String: Any]? {
-    let parts = token.split(separator: ".")
-    guard parts.count >= 2,
-      let data = base64URLDecode(String(parts[1])),
-      let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-    else {
-      return nil
-    }
-    return object
-  }
-
-  /// Decodes a base64url JWT segment (base64url, no padding).
-  static func base64URLDecode(_ string: String) -> Data? {
-    var base64 =
-      string
-      .replacing("-", with: "+")
-      .replacing("_", with: "/")
-    let remainder = base64.count % 4
-    if remainder > 0 {
-      base64 += String(repeating: "=", count: 4 - remainder)
-    }
-    return Data(base64Encoded: base64)
   }
 }

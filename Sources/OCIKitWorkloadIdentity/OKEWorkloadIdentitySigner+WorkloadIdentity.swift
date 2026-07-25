@@ -58,7 +58,7 @@ extension OKEWorkloadIdentitySigner {
     return try await OKEWorkloadIdentitySigner.fromEnvironment(
       transport: transport,
       logger: logger,
-      environment
+      environment: environment
     )
   }
 }

@@ -270,14 +270,14 @@ struct OKEWorkloadIdentityTokenTests {
   @Test("issuedAndExpiry reads the iat and exp claims")
   func readsClaims() {
     let jwt = makeJWT(claims: ["iat": 1000, "exp": 5000])
-    let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: jwt)
+    let claims = TokenClaims.issuedAndExpiry(of: jwt)
     #expect(claims.issuedAt == 1000)
     #expect(claims.expiry == 5000)
   }
 
   @Test("issuedAndExpiry returns nils for a malformed token")
   func malformedIsNil() {
-    let claims = OKEWorkloadIdentityToken.issuedAndExpiry(of: "not-a-jwt")
+    let claims = TokenClaims.issuedAndExpiry(of: "not-a-jwt")
     #expect(claims.issuedAt == nil)
     #expect(claims.expiry == nil)
   }
@@ -285,10 +285,10 @@ struct OKEWorkloadIdentityTokenTests {
   @Test("isUnexpired is true only for a future exp claim")
   func expiryCheck() {
     let now = Int(Date().timeIntervalSince1970)
-    #expect(OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["exp": now + 60]), now: now))
-    #expect(!OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["exp": now - 60]), now: now))
+    #expect(TokenClaims.isUnexpired(makeJWT(claims: ["exp": now + 60]), now: now))
+    #expect(!TokenClaims.isUnexpired(makeJWT(claims: ["exp": now - 60]), now: now))
     // No exp claim -> not usable.
-    #expect(!OKEWorkloadIdentityToken.isUnexpired(makeJWT(claims: ["sub": "x"]), now: now))
+    #expect(!TokenClaims.isUnexpired(makeJWT(claims: ["sub": "x"]), now: now))
   }
 }
 
@@ -325,7 +325,7 @@ struct OKEWorkloadIdentityExchangeTests {
 
     var req = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
     req.httpMethod = "GET"
-    try signer.sign(&req)
+    try await signer.sign(&req)
 
     let auth = req.value(forHTTPHeaderField: "Authorization")
     #expect(auth?.contains("keyId=\"ST$\(rpst)\"") == true)
@@ -333,13 +333,20 @@ struct OKEWorkloadIdentityExchangeTests {
     #expect(auth?.contains("x-content-sha256") == false)  // GET has no signed body
   }
 
-  @Test("sign() before priming throws notPrimed")
-  func signBeforePrimeThrows() {
-    let signer = makeSigner(saToken: validSAToken(), transport: unusedTransport)
-    var req = URLRequest(url: URL(string: "https://example.com/")!)
-    #expect(throws: OKEWorkloadIdentityError.notPrimed) {
-      try signer.sign(&req)
-    }
+  @Test("sign() with no cached token self-primes via one exchange, then signs")
+  func signSelfPrimes() async throws {
+    let rpst = makeJWT(claims: ["iat": Int(Date().timeIntervalSince1970), "exp": futureExp])
+    let recorder = Recorder()
+    let signer = makeSigner(saToken: validSAToken(), transport: recordingTransport(rpst: rpst, recorder: recorder))
+
+    var req = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
+    req.httpMethod = "GET"
+    // No explicit refresh() first: sign() must exchange inline before signing.
+    try await signer.sign(&req)
+
+    #expect(recorder.count == 1)
+    let auth = req.value(forHTTPHeaderField: "Authorization")
+    #expect(auth?.contains("keyId=\"ST$\(rpst)\"") == true)
   }
 
   @Test("A 403 from the proxymux surfaces as tokenExchangeFailed(403)")

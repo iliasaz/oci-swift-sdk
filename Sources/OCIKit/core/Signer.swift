@@ -32,7 +32,14 @@ extension Digest {
 }
 
 public protocol Signer: Sendable {
-  func sign(_ req: inout URLRequest) throws
+  /// Signs `req` in place, adding the OCI request-signature headers.
+  ///
+  /// The requirement is `async` so that token-based signers can transparently
+  /// refresh short-lived credentials (a network round-trip for instance/OKE
+  /// principals) inline before signing, and so that the refresh state can be
+  /// protected by actor isolation rather than a lock. Stateless signers
+  /// (API key, static security token) satisfy it without ever suspending.
+  func sign(_ req: inout URLRequest) async throws
 }
 
 /// A signer whose credentials can be forcibly refreshed after an authentication
@@ -44,21 +51,10 @@ public protocol Signer: Sendable {
 /// a `RefreshableSigner` receives a `401`, ``HTTPClient/send(_:signer:retry:logger:)``
 /// calls ``forceRefresh()`` and retries the request once.
 public protocol RefreshableSigner: Signer {
-  /// Discards any cached security material so the next ``Signer/sign(_:)`` call
-  /// obtains fresh credentials.
-  func forceRefresh() throws
-}
-
-public protocol X509FederationClientProtocol: Sendable {
-  func currentSecurityToken() throws -> String
-  func currentPrivateKey() throws -> _RSA.Signing.PrivateKey
-  /// Invalidates any cached security token so the next ``currentSecurityToken()``
-  /// re-federates. The default implementation does nothing.
-  func forceRefresh() throws
-}
-
-extension X509FederationClientProtocol {
-  public func forceRefresh() throws {}
+  /// Discards any cached security material and obtains fresh credentials so the
+  /// next ``Signer/sign(_:)`` call uses them. Because it is `async`, the `401`
+  /// retry path can `await` a completed refresh before re-signing.
+  func forceRefresh() async throws
 }
 
 enum RequestSigner {
