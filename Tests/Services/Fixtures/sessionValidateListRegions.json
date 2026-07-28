@@ -1,0 +1,14 @@
+{
+  "bodyBase64": "WwogIHsKICAgICJrZXkiOiAiUEhYIiwKICAgICJuYW1lIjogInVzLXBob2VuaXgtMSIKICB9LAogIHsKICAgICJrZXkiOiAiSUFEIiwKICAgICJuYW1lIjogInVzLWFzaGJ1cm4tMSIKICB9Cl0=",
+  "headers": {
+    "Connection": "keep-alive",
+    "Content-Type": "application/json",
+    "Date": "Tue, 28 Jul 2026 12:00:00 GMT",
+    "opc-request-id": "EXAMPLE"
+  },
+  "request": {
+    "method": "GET",
+    "url": "https://identity.us-phoenix-1.oci.oraclecloud.com/20160918/regions"
+  },
+  "statusCode": 200
+}

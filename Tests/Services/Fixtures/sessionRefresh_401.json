@@ -1,0 +1,14 @@
+{
+  "bodyBase64": "ewogICJjb2RlIjogIk5vdEF1dGhlbnRpY2F0ZWQiLAogICJtZXNzYWdlIjogIlRoZSByZXF1aXJlZCBpbmZvcm1hdGlvbiB0byBjb21wbGV0ZSBhdXRoZW50aWNhdGlvbiB3YXMgbm90IHByb3ZpZGVkIG9yIHdhcyBpbmNvcnJlY3QuIgp9",
+  "headers": {
+    "Connection": "keep-alive",
+    "Content-Type": "application/json",
+    "Date": "Tue, 28 Jul 2026 12:00:00 GMT",
+    "opc-request-id": "EXAMPLE"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://auth.us-phoenix-1.oraclecloud.com/v1/authentication/refresh"
+  },
+  "statusCode": 401
+}
