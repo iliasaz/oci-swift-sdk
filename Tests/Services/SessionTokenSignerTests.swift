@@ -92,9 +92,13 @@ private func freshSessionToken(marker: String) -> String {
 
 /// A session that is still valid — so it can legitimately be refreshed — but past
 /// its half-life, so the signer must not keep signing with it.
+/// The window is deliberately long (issued an hour ago, ten minutes still to run)
+/// rather than only just past its midpoint: the midpoint is what makes it stale,
+/// and the ten minutes of headroom keep the token from *expiring* mid-test on a
+/// loaded CI runner, where a single test in this suite can take tens of seconds.
 private func staleSessionToken(marker: String) -> String {
   let now = Int(Date().timeIntervalSince1970)
-  return makeSessionToken(issuedAt: now - 3600, expiry: now + 60, marker: marker)
+  return makeSessionToken(issuedAt: now - 3600, expiry: now + 600, marker: marker)
 }
 
 /// A session that has already ended, which no refresh can recover.
@@ -311,13 +315,25 @@ struct SessionTokenSignerTests {
     // a session with under a minute left. This signer deliberately opts out: its
     // alternative is failing the caller's request and demanding an interactive
     // re-authentication, so while the session is alive at all it is worth asking.
-    let now = Int(Date().timeIntervalSince1970)
-    let expiring = makeSessionToken(issuedAt: now - 3600, expiry: now + 5, marker: "expiring")
     let extended = freshSessionToken(marker: "extended")
-    let fixture = try SessionProfileFixture.make(token: expiring)
+    // The window this test needs is narrow — inside the manager's default slack but
+    // not yet expired — so every slow step (RSA keygen for the fixture, the config
+    // write) happens BEFORE the clock is read, and the token is given as much of
+    // that slack as it can have. Reading `now` first and generating a keypair
+    // afterwards is what made this expire for real on CI.
+    let fixture = try SessionProfileFixture.make(token: freshSessionToken(marker: "placeholder"))
     defer { fixture.remove() }
     let stub = RefreshStub.issuing(extended)
     let signer = makeSessionSigner(for: fixture, stub: stub)
+
+    let now = Int(Date().timeIntervalSince1970)
+    let slack = SecurityTokenContainer.defaultExpiryJitterSeconds
+    let expiring = makeSessionToken(issuedAt: now - 3600, expiry: now + slack - 15, marker: "expiring")
+    try fixture.rewriteToken(expiring)
+    // Precondition: alive, but inside the slack the manager's own gate applies.
+    let container = try SecurityTokenContainer(token: expiring)
+    #expect(container.isValid())
+    #expect(!container.isValid(jitterSeconds: slack))
 
     #expect(try await signAndReadToken(signer) == extended)
     #expect(stub.callCount == 1, "the exchange must be attempted, not skipped: \(stub.requestedPaths)")
