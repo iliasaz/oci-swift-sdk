@@ -48,9 +48,13 @@ public struct SecurityTokenContainer: Sendable, Equatable {
   /// The `tenant` claim: the OCID of the tenancy the session belongs to.
   public let tenancyId: String?
 
-  /// The default slack applied by ``isValid(jitterSeconds:now:)``, matching the
-  /// Python SDK's `DEFAULT_EXPIRY_JITTER_SECONDS`.
-  public static let defaultExpiryJitterSeconds = 60
+  /// The default slack callers pass to ``isValid(jitterSeconds:now:)``, matching
+  /// the Python SDK's `DEFAULT_EXPIRY_JITTER_SECONDS`.
+  ///
+  /// This is the public name for the SDK-wide fallback jitter used by the token
+  /// refresh policy, so the two can never drift: it is defined as
+  /// `TokenRefreshPolicy.fallbackJitterSeconds`.
+  public static let defaultExpiryJitterSeconds = TokenRefreshPolicy.fallbackJitterSeconds
 
   /// When the session expires.
   public var expiresAt: Date { Date(timeIntervalSince1970: TimeInterval(expiry)) }
@@ -105,8 +109,9 @@ public struct SecurityTokenContainer: Sendable, Equatable {
   /// failed refresh still has the second half of the window to retry in.
   ///
   /// Matches the Python SDK's `valid_with_half_expiration_time()`. When the token
-  /// carries no `iat` claim there is no window to halve, so this falls back to
-  /// ``defaultExpiryJitterSeconds`` of slack.
+  /// carries no `iat` claim there is no window to halve, so the underlying policy
+  /// falls back to `TokenRefreshPolicy.fallbackJitterSeconds` of slack — the same
+  /// value ``defaultExpiryJitterSeconds`` exposes.
   public func isValidWithinHalfExpiration(now: Date = Date()) -> Bool {
     TokenRefreshPolicy.isFreshAtHalfLife(
       issuedAt: issuedAt,

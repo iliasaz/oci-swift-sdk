@@ -54,27 +54,33 @@ public struct SessionKeyPair: Sendable {
   /// The OCI fingerprint of the public key: the colon-separated lowercase MD5 of
   /// the SubjectPublicKeyInfo DER, e.g. `aa:bb:…`. This is the value written as
   /// `fingerprint` into the config profile.
-  public var fingerprint: String {
-    // The PEM body is base64 of exactly the DER bytes the CLI hashes, so this
-    // cannot fail for a key we just serialized ourselves.
-    (try? Self.fingerprint(forPublicKeyPEM: publicKeyPEM)) ?? ""
-  }
+  ///
+  /// Computed once, when the keypair is created, so every consumer — including
+  /// the config writer — reads a fingerprint that is known to be well formed.
+  public let fingerprint: String
 
   /// Wraps an existing private key — e.g. one read back from a session's
   /// `key_file` — so the same fingerprint/PEM helpers apply to it.
-  public init(privateKey: _RSA.Signing.PrivateKey) {
+  ///
+  /// - Parameter privateKey: The RSA private key the session is bound to.
+  /// - Throws: ``SessionTokenError/malformedPublicKey(_:)`` when the key's
+  ///   SubjectPublicKeyInfo PEM does not carry a decodable body, so no
+  ///   fingerprint can be derived from it.
+  public init(privateKey: _RSA.Signing.PrivateKey) throws {
     self.privateKey = privateKey
+    self.fingerprint = try Self.fingerprint(forPublicKeyPEM: privateKey.publicKey.pemRepresentation)
   }
 
   /// Generates a fresh RSA-2048 session keypair.
   ///
   /// - Throws: ``SessionTokenError/keyGenerationFailed`` when the key could not
-  ///   be generated.
+  ///   be generated, or ``SessionTokenError/malformedPublicKey(_:)`` when its
+  ///   fingerprint could not be derived.
   public static func generate() throws -> SessionKeyPair {
     guard let key = try? _RSA.Signing.PrivateKey(keySize: .bits2048) else {
       throw SessionTokenError.keyGenerationFailed
     }
-    return SessionKeyPair(privateKey: key)
+    return try SessionKeyPair(privateKey: key)
   }
 
   /// Computes the OCI fingerprint of a SubjectPublicKeyInfo PEM: colon-separated
@@ -84,10 +90,10 @@ public struct SessionKeyPair: Sendable {
   /// from a file and a key generated in-process fingerprint through exactly the
   /// same bytes — the same thing the CLI's `public_key_to_fingerprint` does.
   ///
-  /// - Throws: ``SessionTokenError/malformedToken(_:)`` is *not* used here;
-  ///   a PEM whose body is not base64 raises
-  ///   ``SessionTokenError/persistenceFailed(path:detail:)`` with an empty path,
-  ///   since the only way to reach it is a corrupt key file.
+  /// - Parameter pem: A SubjectPublicKeyInfo PEM, with or without its header and
+  ///   footer, wrapped with either LF or CRLF newlines.
+  /// - Throws: ``SessionTokenError/malformedPublicKey(_:)`` when the PEM body is
+  ///   not valid base64 and therefore encodes no DER to hash.
   public static func fingerprint(forPublicKeyPEM pem: String) throws -> String {
     let body =
       pem
@@ -99,7 +105,7 @@ public struct SessionKeyPair: Sendable {
       .replacing(CharacterClass.newlineSequence, with: "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
     guard let der = Data(base64Encoded: body) else {
-      throw SessionTokenError.persistenceFailed(path: "", detail: "the public key PEM body is not valid base64")
+      throw SessionTokenError.malformedPublicKey("the PEM body is not valid base64")
     }
     let hex = der.md5hex
     return stride(from: 0, to: hex.count, by: 2)

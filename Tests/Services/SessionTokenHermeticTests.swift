@@ -53,7 +53,14 @@ private struct StubSigner: Signer {
 
 private actor RequestRecorder {
   private(set) var last: URLRequest?
-  func record(_ request: URLRequest) { last = request }
+  /// How many requests the transport was asked to perform, so a test can assert
+  /// that a call was made — or that none was.
+  private(set) var count = 0
+
+  func record(_ request: URLRequest) {
+    last = request
+    count += 1
+  }
 }
 
 /// Records the request and replays a committed fixture as the response, so one
@@ -328,6 +335,33 @@ struct SessionTokenManagerWireTests {
     var request = URLRequest(url: URL(string: "https://objectstorage.us-phoenix-1.oraclecloud.com/n/")!)
     try await manager.signer().sign(&request)
     #expect(request.value(forHTTPHeaderField: "Authorization")?.contains("ST$\(expected)") == true)
+  }
+
+  @Test("validate() contacts the service by default, and validate(local: true) makes no request")
+  func validateDefaultsToTheServiceCheck() async throws {
+    let directory = try makeTempDirectory()
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    let profile = try makeProfile(in: directory, token: liveSessionToken())
+    let recorder = RequestRecorder()
+    let manager = SessionTokenManager(
+      configFilePath: profile.config,
+      profile: "session",
+      transport: recordingTransport(fixture: try loadFixture("sessionValidateListRegions.json"), into: recorder)
+    )
+
+    // Plain `oci session validate` asks the service, which is the only check that
+    // catches a session terminated before its token expired — so the default must
+    // not be the offline one.
+    try await manager.validate()
+    #expect(await recorder.count == 1)
+    let request = try #require(await recorder.last)
+    #expect(request.httpMethod == "GET")
+    #expect(request.url?.host == "identity.us-phoenix-1.oci.oraclecloud.com")
+    #expect(request.url?.path == "/20160918/regions")
+
+    // `--local` is the opt-in that stays offline.
+    try await manager.validate(local: true)
+    #expect(await recorder.count == 1)
   }
 
   @Test("A 401 refresh leaves the profile's token file exactly as it was")

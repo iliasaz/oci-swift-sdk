@@ -281,7 +281,7 @@ public struct SessionTokenClient: Sendable {
       throw failure(-1, "Non-HTTP response")
     }
     guard (200..<300).contains(http.statusCode) else {
-      throw failure(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+      throw failure(http.statusCode, Self.diagnostic(fromErrorBody: data))
     }
     return (data, http.statusCode)
   }
@@ -293,8 +293,49 @@ public struct SessionTokenClient: Sendable {
       let token = (object["token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
       !token.isEmpty
     else {
-      throw SessionTokenError.malformedResponse(String(data: data, encoding: .utf8) ?? "")
+      throw SessionTokenError.malformedResponse(Self.shape(ofSuccessBody: data))
     }
     return token
+  }
+
+  // MARK: Diagnostics
+
+  /// How much of an error body is carried into a thrown error.
+  static let maximumDiagnosticCharacters = 1024
+
+  /// The text of a **non-2xx** body, bounded in length.
+  ///
+  /// An error body from these endpoints is an OCI `code`/`message` envelope, which
+  /// is exactly what an operator needs, so it is carried verbatim — but bounded,
+  /// so a proxy's HTML error page or a truncated stream cannot paste kilobytes
+  /// into a log line.
+  static func diagnostic(fromErrorBody data: Data) -> String {
+    let text = String(data: data, encoding: .utf8) ?? "\(data.count) bytes that are not UTF-8"
+    guard text.count > maximumDiagnosticCharacters else { return text }
+    return String(text.prefix(maximumDiagnosticCharacters)) + "… (\(text.count) characters total, truncated)"
+  }
+
+  /// Describes the *shape* of a 2xx body that carried no usable token, without
+  /// reproducing any of its values.
+  ///
+  /// The only way to reach this is a success body the SDK did not understand — and
+  /// on these two endpoints a success body is a **credential**. If the service ever
+  /// wrapped the token in an envelope, interpolating the body would paste a live
+  /// session token into a thrown error, and from there into whatever logs the
+  /// caller keeps. So the diagnostic names the keys and sizes and nothing else:
+  /// enough to see *why* parsing failed, never enough to be a credential.
+  static func shape(ofSuccessBody data: Data) -> String {
+    guard let json = try? JSONSerialization.jsonObject(with: data) else {
+      return "\(data.count) bytes that are not JSON"
+    }
+    switch json {
+    case let object as [String: Any]:
+      let keys = object.keys.sorted().joined(separator: ", ")
+      return "a JSON object of \(data.count) bytes with keys [\(keys)] and no usable token field"
+    case let array as [Any]:
+      return "a JSON array of \(array.count) elements (\(data.count) bytes), not an object"
+    default:
+      return "\(data.count) bytes of JSON that are neither an object nor an array"
+    }
   }
 }
