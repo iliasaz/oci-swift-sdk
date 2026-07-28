@@ -1,0 +1,14 @@
+{
+  "bodyBase64": "ewogICJ0b2tlbiI6ICJleUpoYkdjaU9pSlNVekkxTmlJc0luUjVjQ0k2SWtwWFZDSjkuZXlKemRXSWlPaUp2WTJsa01TNTFjMlZ5TG05ak1TNHVSVmhCVFZCTVJTSXNJblJsYm1GdWRDSTZJbTlqYVdReExuUmxibUZ1WTNrdWIyTXhMaTVGV0VGTlVFeEZJaXdpYVdGMElqb3hOelV3TURBd01EQXdMQ0psZUhBaU9qUXhNREkwTkRRNE1EQXNJbkIwZVhCbElqb2lkWE5sY2lJc0ltcDBhU0k2SW5KbFpuSmxjMmhsWkMxRldFRk5VRXhGSW4wLmMybG5ibUYwZFhKbCIKfQ==",
+  "headers": {
+    "Connection": "keep-alive",
+    "Content-Type": "application/json",
+    "Date": "Tue, 28 Jul 2026 12:00:00 GMT",
+    "opc-request-id": "EXAMPLE"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://auth.us-phoenix-1.oraclecloud.com/v1/authentication/refresh"
+  },
+  "statusCode": 200
+}

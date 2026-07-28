@@ -15,6 +15,7 @@ Support for OCI services is being added incrementally, starting with those curre
 - [x] Instance Principal authN
 - [x] Resource Principal authN (v2.2 — Container Instances, Functions, Data Science)
 - [x] OKE Workload Identity authN (opt-in `OCIKitWorkloadIdentity` product — pins the in-cluster proxymux CA in-process)
+- [x] Session token (UPST) authN — sign with a CLI session profile, plus validate / refresh / non-interactive create (`SessionTokenManager`). `SessionTokenSigner` is the self-refreshing signer for long-lived processes: it picks up a token refreshed out of band and refreshes the session itself at the token's half-life, where `SecurityTokenSigner` signs forever with the token it read at init.
 - [x] Object Storage
 - [x] Container Instances
 - [x] GenAI inference (custom models)

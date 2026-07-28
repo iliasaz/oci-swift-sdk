@@ -59,7 +59,11 @@ enum TokenClaims {
   }
 
   /// Decodes the JWT payload segment into its claim dictionary.
-  private static func payload(of token: String) -> [String: Any]? {
+  ///
+  /// Internal rather than private so ``SecurityTokenContainer`` can read the
+  /// identity claims (`sub`, `tenant`) a user session token carries, without a
+  /// second JWT decoder.
+  static func payload(of token: String) -> [String: Any]? {
     let parts = token.split(separator: ".")
     guard parts.count >= 2,
       let data = base64URLDecode(String(parts[1])),

@@ -1,0 +1,14 @@
+{
+  "bodyBase64": "ewogICJjb2RlIjogIkluY29ycmVjdFN0YXRlIiwKICAibWVzc2FnZSI6ICJUaGUgc2Vzc2lvbiBkdXJhdGlvbiBleGNlZWRzIHRoZSBtYXhpbXVtIGFsbG93ZWQgZm9yIHRoaXMgdGVuYW5jeS4iCn0=",
+  "headers": {
+    "Connection": "keep-alive",
+    "Content-Type": "application/json",
+    "Date": "Tue, 28 Jul 2026 12:00:00 GMT",
+    "opc-request-id": "EXAMPLE"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://auth.us-phoenix-1.oraclecloud.com/v1/token/upst/actions/GenerateUpst"
+  },
+  "statusCode": 409
+}

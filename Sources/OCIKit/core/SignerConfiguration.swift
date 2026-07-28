@@ -128,12 +128,39 @@ public struct SignerConfiguration: Sendable {
     )
   }
 
+  /// Reads a security-token (session-token) profile out of an OCI config file.
+  ///
+  /// - Parameters:
+  ///   - configFilePath: Path to the OCI config file, e.g. `~/.oci/config`.
+  ///   - configName: The profile (INI section) to read.
+  /// - Note: ``fromFileForAPIKey(configFilePath:configName:)`` maps these two
+  ///   failures the other way round (absent/unparseable file → `missingConfig`,
+  ///   absent profile → `badConfigFileFormat`). That inversion is the pre-existing
+  ///   odd one out and is kept for compatibility; the mapping below is the one the
+  ///   error names actually describe, and the one the session-token lifecycle
+  ///   reports.
+  /// - Throws: ``ConfigErrors/badConfigFileFormat`` when the file is absent or cannot be
+  ///   parsed, ``ConfigErrors/missingConfig`` when the profile is not in the file, and
+  ///   the per-key errors documented on ``forSecurityToken(section:configName:)``.
   public static func fromFileForSecurityToken(configFilePath: String, configName: String = "DEFAULT") throws -> SignerConfiguration {
-    let configs = try INIParser(configFilePath)
+    guard let configs = try? INIParser(configFilePath) else { throw ConfigErrors.badConfigFileFormat }
     guard configs.sections.keys.contains(configName), let section = configs.sections[configName] else {
       throw ConfigErrors.missingConfig
     }
+    return try forSecurityToken(section: section, configName: configName)
+  }
 
+  /// Builds a security-token configuration from an already-parsed config section.
+  ///
+  /// The seam behind ``fromFileForSecurityToken(configFilePath:configName:)``, so a
+  /// caller that has already parsed the config file — the session-token lifecycle
+  /// needs the literal `security_token_file` path as well as the parsed
+  /// credentials — resolves the same profile without parsing the file twice.
+  ///
+  /// - Throws: ``ConfigErrors/missingKeyfile``, ``ConfigErrors/badKeyfile``,
+  ///   ``ConfigErrors/notPemFormat``, ``ConfigErrors/missingSecurityTokenFile``,
+  ///   ``ConfigErrors/badSecurityTokenFile``, or ``ConfigErrors/missingRegion``.
+  static func forSecurityToken(section: [String: String], configName: String) throws -> SignerConfiguration {
     guard let keyfilePath = section["key_file"] else { throw ConfigErrors.missingKeyfile }
     guard let keyFileContents = try? String(contentsOfFile: expandTilde(keyfilePath), encoding: .utf8) else { throw ConfigErrors.badKeyfile }
 
